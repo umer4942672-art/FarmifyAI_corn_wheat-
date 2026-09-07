@@ -144,42 +144,42 @@ fun SettingsScreen(
             SectionHeader(title = str("language_setting"), icon = Icons.Outlined.Translate)
 
             GlassCard {
+                // Stacked, not side by side. The old layout squeezed a two-line
+                // description and both chips into one row, so on narrow phones the
+                // text and the buttons ran into each other.
+                Text(
+                    text = str("language_title"),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = str("language_sub"),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = if (langState.isUrdu) "ایپ کی زبان تبدیل کریں" else "App Interface Language",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (langState.isUrdu) "انگریزی یا اردو میں مکمل ایپ استعمال کریں" else "Select English or Urdu language",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    LanguageChoiceButton(
+                        label = "English",
+                        selected = !langState.isUrdu,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        viewModel.setLanguage(AppLanguage.ENGLISH)
+                        langState.setLanguage(AppLanguage.ENGLISH)
                     }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(
-                            selected = !langState.isUrdu,
-                            onClick = {
-                                viewModel.setLanguage(AppLanguage.ENGLISH)
-                                langState.setLanguage(AppLanguage.ENGLISH)
-                            },
-                            label = { Text("English") }
-                        )
-                        FilterChip(
-                            selected = langState.isUrdu,
-                            onClick = {
-                                viewModel.setLanguage(AppLanguage.URDU)
-                                langState.setLanguage(AppLanguage.URDU)
-                            },
-                            label = { Text("اردو") }
-                        )
+                    LanguageChoiceButton(
+                        label = "اردو",
+                        selected = langState.isUrdu,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        viewModel.setLanguage(AppLanguage.URDU)
+                        langState.setLanguage(AppLanguage.URDU)
                     }
                 }
             }
@@ -193,18 +193,33 @@ fun SettingsScreen(
             GlassCard {
                 NotificationToggleRow(
                     title = str("weather_alerts"),
+                    subtitle = str("weather_alerts_sub"),
+                    icon = Icons.Outlined.WbSunny,
                     checked = profile.weatherNotifications,
                     onCheckedChange = { viewModel.toggleNotification("weather", it) }
                 )
-                HorizontalDivider(color = BorderLight, modifier = Modifier.padding(vertical = 6.dp))
+                HorizontalDivider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
                 NotificationToggleRow(
                     title = str("mandi_alerts"),
+                    subtitle = str("mandi_alerts_sub"),
+                    icon = Icons.Outlined.Storefront,
                     checked = profile.mandiNotifications,
                     onCheckedChange = { viewModel.toggleNotification("mandi", it) }
                 )
-                HorizontalDivider(color = BorderLight, modifier = Modifier.padding(vertical = 6.dp))
+                HorizontalDivider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
+                // This toggle existed on the profile model but had no row in the UI.
+                NotificationToggleRow(
+                    title = str("disease_alerts"),
+                    subtitle = str("disease_alerts_sub"),
+                    icon = Icons.Outlined.LocalFlorist,
+                    checked = profile.diseaseAlerts,
+                    onCheckedChange = { viewModel.toggleNotification("disease", it) }
+                )
+                HorizontalDivider(color = BorderLight, modifier = Modifier.padding(vertical = 8.dp))
                 NotificationToggleRow(
                     title = str("khata_reminder"),
+                    subtitle = str("khata_reminder_sub"),
+                    icon = Icons.Outlined.MenuBook,
                     checked = profile.khataReminders,
                     onCheckedChange = { viewModel.toggleNotification("khata", it) }
                 )
@@ -347,11 +362,57 @@ fun SettingsScreen(
     }
 }
 
+/** Full-width language option. Both halves are equal, so English and Urdu never
+ *  squeeze each other regardless of label width. */
+@Composable
+fun LanguageChoiceButton(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) EmeraldGreen else Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(
+            1.5.dp,
+            if (selected) EmeraldGreen else BorderLight
+        ),
+        modifier = modifier.height(46.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (selected) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                color = if (selected) Color.White else TextPrimary
+            )
+        }
+    }
+}
+
 @Composable
 fun NotificationToggleRow(
     title: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    subtitle: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
 ) {
     Row(
         modifier = Modifier
@@ -360,7 +421,37 @@ fun NotificationToggleRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = title, fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (icon != null) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = EmeraldGreen,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+            }
+            Column {
+                Text(
+                    text = title,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Medium
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        lineHeight = 14.sp
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,

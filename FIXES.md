@@ -184,3 +184,170 @@ locally before your demo.
   bypasses RLS. Security depends on the backend filtering by `user_id`
   everywhere — it does — but the README's RLS claim is stronger than reality.
 - The legacy `public.crops` table in `schema.sql` is superseded by `user_crops`.
+
+---
+
+# Second pass — build errors and UI
+
+## 8. Two compile errors in `FarmerUserVectorAvatar`
+
+`:app:compileDebugKotlin` failed on `CommonComponents.kt`. Two separate bugs in
+the same composable, both present in the original code:
+
+- `val w = size.width` — inside the Canvas `DrawScope`, `size` resolved to the
+  composable's `size: Dp` parameter, which shadows `DrawScope.size` and has no
+  `width`/`height`. Fixed with an explicit `this.size`.
+- `drawArc(..., Rect(...), ...)` — `DrawScope.drawArc` takes `topLeft: Offset`
+  plus `size: Size`; the `Rect` overload belongs to `Canvas`, not `DrawScope`.
+  Converted to `topLeft` + `size`.
+
+## 9. Avatar redrawn
+
+The old avatar was a face circle with two dots. Redrawn with a pagri and band,
+beard, moustache, eyebrows, neck and kurta with a collar notch. All coordinates
+are ratios of `w`/`h`, so it stays correct at every size the app requests.
+
+## 10. Signup had no email field
+
+`signupEmail` was declared and passed to `UserRepository.signup()`, but no input
+field ever set it, so it was always `""`. In `UserRepository.signup`:
+
+```kotlin
+phone = if (cleanEmail == null) normalizePhone(cleanPhone) else null
+```
+
+Empty email meant every signup went to Supabase as a *phone* signup, which needs
+an SMS provider. Without one, Supabase returned no session — yet the app still
+created the local Room account and let the user in.
+
+That single gap explains both reported failures: with no access token, every
+authenticated endpoint fails. Chat returned "assistant unavailable" and nothing
+reached the database, while offline features (weather, on-device detection)
+carried on working, which made it look like two unrelated bugs.
+
+An email field was added to the signup form, and validation now requires a
+valid email while treating phone as optional profile data.
+
+**Existing accounts created before this fix have no cloud identity.** Clear the
+app's data and sign up again with an email.
+
+## 11. Scan completion sound
+
+New `util/ScanSound.kt` plays a ~1s tone via `ToneGenerator` when a scan
+finishes — a double beep when a plant is recognised, a distinct error tone when
+the image is rejected. Wired into `MainViewModel.analyzePlantBitmap`. No audio
+asset ships in the APK, and failures (silent mode, no audio focus) are swallowed
+so the scan result is never blocked.
+
+## 12. Camera and gallery buttons
+
+The two buttons had no fixed height, so their size shifted with label length
+(worse in Urdu). Both now use `height(48.dp)` with `maxLines = 1`, and gallery
+became an `OutlinedButton` — camera is the primary action, gallery secondary,
+instead of two filled green blocks competing.
+
+## 13. Navigation bar
+
+Navigation was a `Crossfade` over a single state value with no history, so the
+hardware/gesture back button closed the app from any screen.
+
+Added a `backStack` plus a `BackHandler`. Back now returns to the previous
+screen; on the dashboard with an empty stack the handler is disabled so the
+system closes the app as expected. Splash and auth never accept back, and
+auth-success and logout reset the stack so back cannot re-enter a signed-out
+session. Nav labels got `maxLines = 1` and `softWrap = false` to stop the longer
+Urdu labels wrapping to two lines.
+
+---
+
+# Third pass — settings screen
+
+## 14. Language switcher was cramped
+
+A two-line description and both language chips shared a single
+`Arrangement.SpaceBetween` row. On narrow phones the text and the chips ran into
+each other, and the chips were different widths because "English" and "اردو"
+render at different lengths.
+
+Now stacked: title and one-line description on top, then a full-width row of two
+equal-weight buttons below. The selected side is filled green with a check mark,
+the other is outlined, so the current language is obvious at a glance. Both
+labels are `maxLines = 1`.
+
+New `LanguageChoiceButton` composable in `SettingsScreen.kt`.
+
+## 15. Notification rows
+
+Each row was a bare title plus a switch, with no indication of what the alert
+actually does. Rows now carry an icon and a one-line description, with more
+breathing room between them.
+
+The `diseaseAlerts` toggle existed on `FarmerProfile` but had no row in the UI at
+all — it was impossible to change. Added.
+
+Six new string keys in `LanguageManager.kt` cover the new labels and subtitles in
+both English and Urdu.
+
+## 16. Notification toggles did not persist
+
+`UserRepository.toggleNotification()` only updated the in-memory `_profile`
+flow. Nothing was written to Room, so every switch reset itself on the next app
+start — the setting appeared to work until you closed the app.
+
+It now writes the four flags back to the active Room user row. No schema change:
+the columns already existed on `UserEntity` and were simply never updated.
+
+---
+
+# Fourth pass — dashboard and chat visuals
+
+## 17. Quick action tiles redrawn as vector art
+
+All four tiles used generic Material icons in the same layout, so at a glance
+they were hard to tell apart. Two titles also carried emoji ("🌱 Field Work",
+"📷 AI Doctor") that duplicated the icon beside them.
+
+New `QuickActionArt` composable draws each action on a Canvas:
+
+- Income and Expense — a stack of coins with a rising or falling arrow
+- Field work — sun over ploughed furrows with a sprout in front
+- Crop scan — a leaf under a magnifier
+
+Everything is drawn from ratios of the available size, so it stays sharp at any
+density and ships no extra drawables. Tiles changed from a 68dp horizontal row
+to a 112dp vertical card: artwork in a tinted rounded square on top, then title
+and subtitle. Emoji removed from labels, and the header no longer shouts in caps
+or repeats the English name in brackets on the Urdu side.
+
+Functionality is untouched — same four callbacks, same test tags.
+
+## 18. Chat screen background
+
+`KisanChatScreen` was a flat background colour. A farm photo
+(`farm_hero_banner`) now sits behind the message list, blurred at 18dp and
+faded to 30% opacity, with a vertical scrim over it so bubble text keeps full
+contrast at the top and bottom where the header and input sit.
+
+`Modifier.blur` is a no-op below API 31, so the low alpha plus the scrim carry
+the effect on older devices rather than leaving a sharp photo behind the text.
+
+---
+
+# Fifth pass — dashboard emphasis swapped
+
+## 19. Disease detection promoted, advisory moved to a tile
+
+The dashboard led with a large "Kisan AI Advisor" hero banner, while disease
+detection — the app's own trained model and its strongest feature — sat as one
+small tile among four. The two swapped places:
+
+- The hero banner is now **AI disease detection**. It opens the scan screen, the
+  gradient moved from blue to green to match the rest of the app, the icon is a
+  camera instead of a voice symbol, and the two prompt chips became "Wheat leaf"
+  and "Corn leaf" (the two models actually bundled). Copy now states the scan
+  runs on the phone, offline. Test tag renamed to `dashboard_disease_ai_card`.
+- The fourth quick action tile is now **AI advisory**, opening the chat. New
+  `QuickActionArtKind.ADVISORY` draws a speech bubble with a wheat ear inside.
+
+`QuickActionArtKind.CROP_SCAN` and its artwork are kept, since the scan is still
+reachable from the banner and the art may be reused.

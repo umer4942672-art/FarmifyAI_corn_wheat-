@@ -334,15 +334,42 @@ fun FarmerUserVectorAvatar(
 ) {
     Box(modifier = modifier.size(size).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier), contentAlignment = Alignment.Center) {
         androidx.compose.foundation.Canvas(Modifier.fillMaxSize().clip(CircleShape)) {
-            val w = size.width; val h = size.height
-            drawCircle(brush = Brush.linearGradient(listOf(Color(0xFFFFF3D6), Color(0xFFDCEFD8))))
-            drawCircle(Color(0xFF2E7D32), style = androidx.compose.ui.graphics.drawscope.Stroke(w * .035f))
-            // Clean Pakistani farmer avatar: straw cap, face, beard and blue kurta.
-            drawRoundRect(Color(0xFF355C7D), topLeft = androidx.compose.ui.geometry.Offset(w*.16f,h*.68f), size = androidx.compose.ui.geometry.Size(w*.68f,h*.38f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w*.18f))
-            drawCircle(Color(0xFFC98962), radius=w*.23f, center=androidx.compose.ui.geometry.Offset(w*.5f,h*.47f))
-            drawArc(Color(0xFF5A3A28), 0f, 180f, false, androidx.compose.ui.geometry.Rect(w*.28f,h*.38f,w*.72f,h*.72f), style=androidx.compose.ui.graphics.drawscope.Stroke(w*.07f))
-            drawRoundRect(Color(0xFFC89B3C), topLeft=androidx.compose.ui.geometry.Offset(w*.25f,h*.20f), size=androidx.compose.ui.geometry.Size(w*.5f,h*.12f), cornerRadius=androidx.compose.ui.geometry.CornerRadius(w*.05f))
-            drawCircle(Color(0xFF5A3A28), radius=w*.035f, center=androidx.compose.ui.geometry.Offset(w*.41f,h*.47f)); drawCircle(Color(0xFF5A3A28), radius=w*.035f, center=androidx.compose.ui.geometry.Offset(w*.59f,h*.47f))
+            // this.size is the DrawScope canvas size. Without the explicit receiver
+            // Kotlin resolves `size` to the composable's Dp parameter, which has no
+            // width/height and fails to compile.
+            val w = this.size.width
+            val h = this.size.height
+            fun off(x: Float, y: Float) = androidx.compose.ui.geometry.Offset(w * x, h * y)
+            fun dim(x: Float, y: Float) = androidx.compose.ui.geometry.Size(w * x, h * y)
+            fun corner(r: Float) = androidx.compose.ui.geometry.CornerRadius(w * r)
+
+            val skin = Color(0xFFD09B70)
+            val skinShade = Color(0xFFB8825A)
+            val hair = Color(0xFF4A3324)
+            val kurta = Color(0xFF2F6E8F)
+            val pagri = Color(0xFFE6B84C)
+
+            drawCircle(brush = Brush.linearGradient(listOf(Color(0xFFF2F8EA), Color(0xFFD4E9CF))))
+
+            drawRoundRect(kurta, topLeft = off(0.11f, 0.74f), size = dim(0.78f, 0.40f), cornerRadius = corner(0.24f))
+            drawRoundRect(Color(0xFF24576F), topLeft = off(0.44f, 0.74f), size = dim(0.12f, 0.12f), cornerRadius = corner(0.03f))
+            drawRoundRect(skinShade, topLeft = off(0.42f, 0.63f), size = dim(0.16f, 0.15f), cornerRadius = corner(0.05f))
+
+            drawCircle(skin, radius = w * 0.22f, center = off(0.5f, 0.47f))
+
+            // DrawScope.drawArc takes topLeft + size, not a Rect.
+            drawArc(hair, 18f, 144f, true, topLeft = off(0.265f, 0.27f), size = dim(0.47f, 0.46f))
+            drawRoundRect(hair, topLeft = off(0.425f, 0.535f), size = dim(0.15f, 0.038f), cornerRadius = corner(0.02f))
+
+            drawCircle(Color(0xFF33241A), radius = w * 0.027f, center = off(0.428f, 0.458f))
+            drawCircle(Color(0xFF33241A), radius = w * 0.027f, center = off(0.572f, 0.458f))
+            drawRoundRect(hair, topLeft = off(0.375f, 0.408f), size = dim(0.10f, 0.024f), cornerRadius = corner(0.015f))
+            drawRoundRect(hair, topLeft = off(0.525f, 0.408f), size = dim(0.10f, 0.024f), cornerRadius = corner(0.015f))
+
+            drawArc(pagri, 180f, 180f, true, topLeft = off(0.25f, 0.155f), size = dim(0.50f, 0.40f))
+            drawRoundRect(Color(0xFFCB9A2E), topLeft = off(0.25f, 0.325f), size = dim(0.50f, 0.055f), cornerRadius = corner(0.03f))
+
+            drawCircle(Color(0xFF2E7D32), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.03f))
         }
         if (showTickMark) Icon(Icons.Filled.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.align(Alignment.BottomEnd).size(size*.30f))
     }

@@ -570,6 +570,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val imagePath = if (result.isPlantImage) saveScanImage(bitmap) else ""
                 val resultWithImage = result.copy(imagePathOrUri = imagePath)
                 _currentScanResult.value = resultWithImage
+                // Audible confirmation: a double beep for a recognised plant,
+                // a distinct error tone when the image was rejected.
+                com.example.util.ScanSound.playScanComplete(isSuccess = result.isPlantImage)
             } catch (e: Exception) {
                 _userFeedback.emit("Scan error: ${e.message}")
             } finally {

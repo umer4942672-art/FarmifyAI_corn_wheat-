@@ -517,12 +517,13 @@ fun DashboardScreen(
                     .padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = if (langState.isUrdu) "فوری کارروائیاں (Quick Actions)" else "QUICK ACTIONS",
-                    fontSize = 12.sp,
+                    // One language at a time. The Urdu label used to carry the
+                    // English name in brackets while the English one shouted in caps.
+                    text = if (langState.isUrdu) "فوری کارروائیاں" else "Quick actions",
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextSecondary,
-                    letterSpacing = 0.5.sp,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                    modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
                 )
 
                 Row(
@@ -530,17 +531,17 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     QuickActionTile(
-                        title = if (langState.isUrdu) "+ آمدن" else "+ Income",
-                        subtitle = if (langState.isUrdu) "فصل فروخت" else "Crop Sale",
-                        icon = Icons.Default.TrendingUp,
+                        title = if (langState.isUrdu) "آمدن" else "Income",
+                        subtitle = if (langState.isUrdu) "فصل فروخت" else "Crop sale",
+                        art = QuickActionArtKind.INCOME,
                         accentColor = SuccessGreen,
                         onClick = onOpenAddIncome,
                         modifier = Modifier.weight(1f)
                     )
                     QuickActionTile(
-                        title = if (langState.isUrdu) "+ خرچہ" else "+ Expense",
-                        subtitle = if (langState.isUrdu) "کھاد، ڈیزل" else "Fertilizer/Fuel",
-                        icon = Icons.Default.TrendingDown,
+                        title = if (langState.isUrdu) "خرچہ" else "Expense",
+                        subtitle = if (langState.isUrdu) "کھاد، ڈیزل" else "Fertilizer, fuel",
+                        art = QuickActionArtKind.EXPENSE,
                         accentColor = ErrorRed,
                         onClick = onOpenAddExpense,
                         modifier = Modifier.weight(1f)
@@ -554,34 +555,34 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     QuickActionTile(
-                        title = if (langState.isUrdu) "🌱 فیلڈ کام" else "🌱 Field Work",
-                        subtitle = if (langState.isUrdu) "ہل، گوڈی، سپرے" else "Tillage, Spray",
-                        icon = Icons.Default.Engineering,
+                        title = if (langState.isUrdu) "فیلڈ کام" else "Field work",
+                        subtitle = if (langState.isUrdu) "ہل، گوڈی، سپرے" else "Tillage, spray",
+                        art = QuickActionArtKind.FIELD_WORK,
                         accentColor = ForestGreen,
                         onClick = onOpenAddFieldWork,
                         modifier = Modifier.weight(1f)
                     )
                     QuickActionTile(
-                        title = if (langState.isUrdu) "📷 پودا سکین" else "📷 AI Doctor",
-                        subtitle = if (langState.isUrdu) "بیماری تشخیص" else "Crop Scan",
-                        icon = Icons.Default.DocumentScanner,
+                        title = if (langState.isUrdu) "AI مشورہ" else "AI advisory",
+                        subtitle = if (langState.isUrdu) "کسان دوست سے پوچھیں" else "Ask Kisan Dost",
+                        art = QuickActionArtKind.ADVISORY,
                         accentColor = Color(0xFF673AB7),
-                        onClick = onNavigateToScan,
+                        onClick = onNavigateToKisanChat,
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
         }
 
-        // 5. Kisan Dost AI Voice Assistant Interactive Hero Banner
+        // 5. AI Disease Detection hero banner (offline, on-device TFLite)
         item {
             Surface(
-                onClick = onNavigateToKisanChat,
+                onClick = onNavigateToScan,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
                     .shadow(3.dp, shape = RoundedCornerShape(26.dp), spotColor = Color(0x331B5E20))
-                    .testTag("dashboard_kisan_ai_card"),
+                    .testTag("dashboard_disease_ai_card"),
                 shape = RoundedCornerShape(26.dp),
                 color = Color.Transparent
             ) {
@@ -591,8 +592,8 @@ fun DashboardScreen(
                         .background(
                             Brush.linearGradient(
                                 listOf(
-                                    Color(0xFF0D47A1),
-                                    Color(0xFF1976D2),
+                                    Color(0xFF1B5E20),
+                                    Color(0xFF2E7D32),
                                     Color(0xFF00897B)
                                 )
                             )
@@ -615,7 +616,7 @@ fun DashboardScreen(
                                         color = Color.White.copy(alpha = 0.22f)
                                     ) {
                                         Text(
-                                            text = "KISAN AI ADVISOR",
+                                            text = "AI DISEASE DETECTION",
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White,
@@ -633,7 +634,7 @@ fun DashboardScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 Text(
-                                    text = if (langState.isUrdu) "کسان دوست AI سے مشورہ لیں" else "Ask Kisan Dost AI Advisor",
+                                    text = if (langState.isUrdu) "پتے کی تصویر سے بیماری پہچانیں" else "Scan a leaf, find the disease",
                                     fontSize = 19.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White
@@ -643,9 +644,9 @@ fun DashboardScreen(
 
                                 Text(
                                     text = if (langState.isUrdu)
-                                        "اردو آواز یا چیٹ میں فصل، کھاد اور بیماریوں کے فوری مشورے حاصل کریں"
+                                        "گندم اور مکئی کے پتوں کی تصویر لیں، بیماری اور علاج فوراً موبائل پر"
                                     else
-                                        "Bilingual voice & chat assistant for fertilizer, pests & mandi rates",
+                                        "Photograph a wheat or corn leaf. Diagnosis and treatment run on the phone, offline",
                                     fontSize = 12.sp,
                                     color = Color.White.copy(alpha = 0.92f),
                                     lineHeight = 16.sp
@@ -662,7 +663,7 @@ fun DashboardScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.RecordVoiceOver,
+                                    imageVector = Icons.Filled.CameraAlt,
                                     contentDescription = null,
                                     tint = GoldenYellow,
                                     modifier = Modifier.size(30.dp)
@@ -678,13 +679,13 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             PromptChip(
-                                text = if (langState.isUrdu) "🌾 گندم کھاد شیڈول" else "🌾 Wheat Fertilizer",
-                                onClick = onNavigateToKisanChat,
+                                text = if (langState.isUrdu) "گندم کا پتہ" else "Wheat leaf",
+                                onClick = onNavigateToScan,
                                 modifier = Modifier.weight(1f)
                             )
                             PromptChip(
-                                text = if (langState.isUrdu) "🐛 سنڈی کا سپرے" else "🐛 Pest Remedies",
-                                onClick = onNavigateToKisanChat,
+                                text = if (langState.isUrdu) "مکئی کا پتہ" else "Corn leaf",
+                                onClick = onNavigateToScan,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -818,11 +819,117 @@ private fun WeatherMetricPill(
     }
 }
 
+enum class QuickActionArtKind { INCOME, EXPENSE, FIELD_WORK, CROP_SCAN, ADVISORY }
+
+/**
+ * Hand-drawn vector art for the quick action tiles.
+ *
+ * Material icons all shared the same generic look, so the four actions were hard
+ * to tell apart at a glance. These are drawn on a Canvas from ratios of the
+ * available size, so they stay crisp at any density and need no extra drawables.
+ */
+@Composable
+private fun QuickActionArt(
+    kind: QuickActionArtKind,
+    accent: Color,
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val s = this.size.minDimension
+        fun at(x: Float, y: Float) = androidx.compose.ui.geometry.Offset(s * x, s * y)
+        fun box(w: Float, h: Float) = androidx.compose.ui.geometry.Size(s * w, s * h)
+        val line = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = s * 0.075f,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            join = androidx.compose.ui.graphics.StrokeJoin.Round
+        )
+        val soft = accent.copy(alpha = 0.25f)
+
+        when (kind) {
+            QuickActionArtKind.INCOME, QuickActionArtKind.EXPENSE -> {
+                // Stack of coins with a direction arrow beside it.
+                drawOval(soft, topLeft = at(0.04f, 0.62f), size = box(0.50f, 0.19f))
+                drawOval(soft, topLeft = at(0.04f, 0.47f), size = box(0.50f, 0.19f))
+                drawOval(accent.copy(alpha = 0.40f), topLeft = at(0.04f, 0.32f), size = box(0.50f, 0.19f))
+                drawOval(accent, topLeft = at(0.04f, 0.32f), size = box(0.50f, 0.19f), style = line)
+
+                val rising = kind == QuickActionArtKind.INCOME
+                val arrow = androidx.compose.ui.graphics.Path().apply {
+                    if (rising) {
+                        moveTo(s * 0.66f, s * 0.42f); lineTo(s * 0.80f, s * 0.24f); lineTo(s * 0.94f, s * 0.42f)
+                        moveTo(s * 0.80f, s * 0.24f); lineTo(s * 0.80f, s * 0.80f)
+                    } else {
+                        moveTo(s * 0.66f, s * 0.62f); lineTo(s * 0.80f, s * 0.80f); lineTo(s * 0.94f, s * 0.62f)
+                        moveTo(s * 0.80f, s * 0.80f); lineTo(s * 0.80f, s * 0.24f)
+                    }
+                }
+                drawPath(arrow, accent, style = line)
+            }
+
+            QuickActionArtKind.FIELD_WORK -> {
+                // Sun over ploughed furrows, with a young sprout in front.
+                drawCircle(accent.copy(alpha = 0.35f), radius = s * 0.11f, center = at(0.80f, 0.17f))
+                for (i in 0..2) {
+                    val y = 0.60f + i * 0.15f
+                    val furrow = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(s * 0.04f, s * y)
+                        quadraticBezierTo(s * 0.50f, s * (y - 0.13f), s * 0.96f, s * y)
+                    }
+                    drawPath(furrow, accent.copy(alpha = 0.55f), style = line)
+                }
+                drawLine(accent, at(0.36f, 0.56f), at(0.36f, 0.24f), strokeWidth = s * 0.065f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawOval(accent, topLeft = at(0.12f, 0.22f), size = box(0.24f, 0.15f))
+                drawOval(accent.copy(alpha = 0.65f), topLeft = at(0.36f, 0.30f), size = box(0.24f, 0.15f))
+            }
+
+            QuickActionArtKind.ADVISORY -> {
+                // Speech bubble with a wheat ear inside: farming advice, in words.
+                val bubble = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(s * 0.10f, s * 0.14f)
+                    lineTo(s * 0.90f, s * 0.14f)
+                    lineTo(s * 0.90f, s * 0.66f)
+                    lineTo(s * 0.40f, s * 0.66f)
+                    lineTo(s * 0.24f, s * 0.90f)
+                    lineTo(s * 0.24f, s * 0.66f)
+                    lineTo(s * 0.10f, s * 0.66f)
+                    close()
+                }
+                drawPath(bubble, accent.copy(alpha = 0.22f))
+                drawPath(bubble, accent, style = line)
+                drawLine(accent, at(0.50f, 0.55f), at(0.50f, 0.25f), strokeWidth = s * 0.055f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawOval(accent, topLeft = at(0.32f, 0.24f), size = box(0.18f, 0.11f))
+                drawOval(accent, topLeft = at(0.50f, 0.24f), size = box(0.18f, 0.11f))
+                drawOval(accent.copy(alpha = 0.7f), topLeft = at(0.32f, 0.38f), size = box(0.18f, 0.11f))
+                drawOval(accent.copy(alpha = 0.7f), topLeft = at(0.50f, 0.38f), size = box(0.18f, 0.11f))
+            }
+
+            QuickActionArtKind.CROP_SCAN -> {
+                // Leaf under a magnifier.
+                val leaf = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(s * 0.10f, s * 0.78f)
+                    quadraticBezierTo(s * 0.06f, s * 0.18f, s * 0.72f, s * 0.12f)
+                    quadraticBezierTo(s * 0.74f, s * 0.66f, s * 0.10f, s * 0.78f)
+                    close()
+                }
+                drawPath(leaf, accent.copy(alpha = 0.28f))
+                drawPath(leaf, accent, style = line)
+                drawLine(accent.copy(alpha = 0.7f), at(0.14f, 0.76f), at(0.62f, 0.24f),
+                    strokeWidth = s * 0.05f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawCircle(accent, radius = s * 0.19f, center = at(0.66f, 0.62f), style = line)
+                drawLine(accent, at(0.79f, 0.75f), at(0.95f, 0.92f), strokeWidth = s * 0.09f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+        }
+    }
+}
+
 @Composable
 private fun QuickActionTile(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    art: QuickActionArtKind,
     accentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -833,39 +940,38 @@ private fun QuickActionTile(
         color = SoftWhite,
         border = androidx.compose.foundation.BorderStroke(1.dp, BorderSlate),
         shadowElevation = 2.dp,
-        modifier = modifier.height(68.dp).testTag("quick_tile_${title.take(5)}")
+        modifier = modifier.height(112.dp).testTag("quick_tile_${title.take(5)}")
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
             Box(
                 modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(accentColor.copy(alpha = 0.14f)),
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(accentColor.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(20.dp)
+                QuickActionArt(
+                    kind = art,
+                    accent = accentColor,
+                    modifier = Modifier.size(24.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(10.dp))
-            Column(verticalArrangement = Arrangement.Center) {
+            Column {
                 Text(
                     text = title,
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary
+                    color = TextPrimary,
+                    maxLines = 1
                 )
                 Text(
                     text = subtitle,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     color = TextSecondary,
                     maxLines = 1
                 )

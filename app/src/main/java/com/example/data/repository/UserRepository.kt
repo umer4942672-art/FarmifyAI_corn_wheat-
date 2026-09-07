@@ -330,6 +330,11 @@ class UserRepository(
 
     fun close() { repositoryScope.cancel() }
 
+    /**
+     * Notification preferences were previously only held in memory, so every
+     * toggle reset itself the next time the app started. They are now written
+     * back to the active Room user row.
+     */
     fun toggleNotification(type: String, enabled: Boolean) {
         _profile.update {
             when (type) {
@@ -339,6 +344,19 @@ class UserRepository(
                 "khata" -> it.copy(khataReminders = enabled)
                 else -> it
             }
+        }
+
+        val updated = _profile.value
+        repositoryScope.launch {
+            val active = userDao.getActiveUserDirect() ?: return@launch
+            userDao.insertOrUpdateUser(
+                active.copy(
+                    weatherNotifications = updated.weatherNotifications,
+                    mandiNotifications = updated.mandiNotifications,
+                    diseaseAlerts = updated.diseaseAlerts,
+                    khataReminders = updated.khataReminders
+                )
+            )
         }
     }
 

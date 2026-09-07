@@ -2,6 +2,7 @@ package com.example.ui.screens.chat
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,16 +21,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.model.ChatMessage
 import com.example.data.model.MessageSender
 import com.example.ui.theme.*
@@ -175,6 +181,32 @@ fun KisanChatScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
+            // Blurred field photo behind the conversation. Modifier.blur is a no-op
+            // below API 31, so the low alpha plus the scrim below keep the text
+            // readable on older devices too.
+            Image(
+                painter = painterResource(id = R.drawable.farm_hero_banner),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .matchParentSize()
+                    .blur(18.dp)
+                    .alpha(0.30f)
+            )
+            // Scrim so message bubbles always keep enough contrast.
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.80f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.62f),
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.80f)
+                            )
+                        )
+                    )
+            )
             LazyColumn(
                 state = listState,
                 modifier = Modifier

@@ -2,6 +2,7 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -69,7 +70,35 @@ fun FarmifyApp(
     languageState: LanguageState
 ) {
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Splash) }
+    // Simple back stack. Without this the hardware/gesture back button closed the
+    // whole app from any screen, because navigation was only a Crossfade over state.
+    val backStack = remember { mutableStateListOf<Screen>() }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    fun navigateTo(target: Screen) {
+        if (target == currentScreen) return
+        backStack.add(currentScreen)
+        currentScreen = target
+    }
+
+    fun resetTo(target: Screen) {
+        backStack.clear()
+        currentScreen = target
+    }
+
+    // Back is disabled on splash/auth, and on the dashboard with an empty stack the
+    // system handles it so the app closes as users expect.
+    val canGoBack = currentScreen != Screen.Splash && currentScreen != Screen.Auth &&
+        (backStack.isNotEmpty() || currentScreen != Screen.Dashboard)
+
+    BackHandler(enabled = canGoBack) {
+        val previous = backStack.removeLastOrNull()
+        currentScreen = when {
+            previous == Screen.Splash || previous == Screen.Auth -> Screen.Dashboard
+            previous != null -> previous
+            else -> Screen.Dashboard
+        }
+    }
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
 
     var showAddIncomeDialog by remember { mutableStateOf(false) }
@@ -100,7 +129,7 @@ fun FarmifyApp(
                         viewModel.toggleLanguage()
                     },
                     onProfileClick = {
-                        currentScreen = Screen.Settings
+                        navigateTo(Screen.Settings)
                     }
                 )
             }
@@ -127,7 +156,7 @@ fun FarmifyApp(
                             val isSelected = currentScreen == screen
                             NavigationBarItem(
                                 selected = isSelected,
-                                onClick = { currentScreen = screen },
+                                onClick = { if (screen != currentScreen) navigateTo(screen) },
                                 icon = {
                                     Icon(
                                         imageVector = if (isSelected) screen.iconFilled else screen.iconOutlined,
@@ -141,7 +170,9 @@ fun FarmifyApp(
                                         text = if (languageState.isUrdu) screen.titleUr else screen.titleEn,
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 },
                                 colors = NavigationBarItemDefaults.colors(
@@ -172,45 +203,43 @@ fun FarmifyApp(
                 when (screen) {
                     Screen.Splash -> SplashScreen(
                         onSplashFinished = {
-                            currentScreen = if (userProfile.isAuthenticated) {
-                                Screen.Dashboard
-                            } else {
-                                Screen.Auth
-                            }
+                            resetTo(
+                                if (userProfile.isAuthenticated) Screen.Dashboard else Screen.Auth
+                            )
                         }
                     )
                     Screen.Auth -> AuthScreen(
                         viewModel = viewModel,
                         onAuthSuccess = {
-                            currentScreen = Screen.Dashboard
+                            resetTo(Screen.Dashboard)
                         }
                     )
                     Screen.Dashboard -> DashboardScreen(
                         viewModel = viewModel,
-                        onNavigateToWeather = { currentScreen = Screen.Weather },
-                        onNavigateToKhata = { currentScreen = Screen.Khata },
-                        onNavigateToMandi = { currentScreen = Screen.Mandi },
-                        onNavigateToScan = { currentScreen = Screen.DiseaseScan },
-                        onNavigateToKisanChat = { currentScreen = Screen.KisanChat },
-                        onNavigateToCropsGuide = { currentScreen = Screen.CropsGuide },
+                        onNavigateToWeather = { navigateTo(Screen.Weather) },
+                        onNavigateToKhata = { navigateTo(Screen.Khata) },
+                        onNavigateToMandi = { navigateTo(Screen.Mandi) },
+                        onNavigateToScan = { navigateTo(Screen.DiseaseScan) },
+                        onNavigateToKisanChat = { navigateTo(Screen.KisanChat) },
+                        onNavigateToCropsGuide = { navigateTo(Screen.CropsGuide) },
                         onOpenAddIncome = { showAddIncomeDialog = true },
                         onOpenAddExpense = { showAddExpenseDialog = true },
                         onOpenAddFieldWork = { showAddFieldWorkDialog = true }
                     )
                     Screen.CropsGuide -> CropsGuideScreen(
                         viewModel = viewModel,
-                        onNavigateToScan = { currentScreen = Screen.DiseaseScan },
+                        onNavigateToScan = { navigateTo(Screen.DiseaseScan) },
                         onAskAiQuestion = { question ->
                             viewModel.sendChatMessage(question)
-                            currentScreen = Screen.KisanChat
+                            navigateTo(Screen.KisanChat)
                         }
                     )
                     Screen.KisanChat -> KisanChatScreen(
                         viewModel = viewModel,
                         onNavigateToCropGuide = { _ ->
-                            currentScreen = Screen.CropsGuide
+                            navigateTo(Screen.CropsGuide)
                         },
-                        onNavigateToDiseaseScan = { currentScreen = Screen.DiseaseScan }
+                        onNavigateToDiseaseScan = { navigateTo(Screen.DiseaseScan) }
                     )
                     Screen.Khata -> SmartKhataScreen(viewModel = viewModel)
                     Screen.Mandi -> MandiRatesScreen(viewModel = viewModel)
@@ -219,7 +248,7 @@ fun FarmifyApp(
                     Screen.Settings -> SettingsScreen(
                         viewModel = viewModel,
                         onLogout = {
-                            currentScreen = Screen.Auth
+                            resetTo(Screen.Auth)
                         }
                     )
                 }

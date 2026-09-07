@@ -610,6 +610,43 @@ fun AuthScreen(
 
                                 Spacer(modifier = Modifier.height(12.dp))
 
+                                // Email — required, because Supabase signup uses email.
+                                // Phone signup needs an SMS provider, so email is the
+                                // credential that actually creates a cloud session.
+                                Text(
+                                    text = if (langState.isUrdu) "ای میل *" else "Email *",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                OutlinedTextField(
+                                    value = signupEmail,
+                                    onValueChange = { signupEmail = it },
+                                    placeholder = { Text("kisan@farmify.pk", fontSize = 13.sp, color = TextMuted) },
+                                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = EmeraldGreen) },
+                                    singleLine = true,
+                                    isError = signupEmail.isNotBlank() && !signupEmail.contains("@"),
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Email,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary,
+                                        cursorColor = EmeraldGreen,
+                                        focusedBorderColor = EmeraldGreen,
+                                        unfocusedBorderColor = BorderSlate,
+                                        focusedContainerColor = SoftWhite,
+                                        unfocusedContainerColor = OffWhite
+                                    ),
+                                    modifier = Modifier.fillMaxWidth().testTag("auth_signup_email")
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
                                 // District Dropdown Selector
                                 Text(
                                     text = if (langState.isUrdu) "ضلع و شہر *" else "District / City *",
@@ -814,8 +851,11 @@ fun AuthScreen(
                                 Button(
                                     onClick = {
                                         focusManager.clearFocus()
-                                        if (signupFullName.isBlank() || signupPhone.isBlank() || signupPassword.isBlank()) {
-                                            signupError = if (langState.isUrdu) "برائے مہربانی تمام ضروری خانے (*) پر کریں" else "Please fill all required fields (*)"
+                                        // Email is what actually creates the Supabase account,
+                                        // so it is validated; phone is optional profile data.
+                                        if (signupFullName.isBlank() || signupEmail.isBlank() ||
+                                            !signupEmail.contains("@") || signupPassword.isBlank()) {
+                                            signupError = if (langState.isUrdu) "نام، درست ای میل اور پاس ورڈ درج کریں" else "Enter your name, a valid email and a password"
                                         } else {
                                             coroutineScope.launch {
                                                 isSubmitting = true

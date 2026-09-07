@@ -492,30 +492,49 @@ fun UploadAndCaptureCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Both buttons get a fixed height and single-line text so they stay
+                // the same size regardless of label length in English or Urdu.
                 Button(
                     onClick = onLaunchCamera,
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
                     shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
                     modifier = Modifier
                         .weight(1f)
+                        .height(48.dp)
                         .testTag("ai_take_photo_btn")
                 ) {
                     Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = str("take_photo"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(
+                        text = str("take_photo"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        maxLines = 1
+                    )
                 }
 
-                Button(
+                // Gallery is the secondary action, so it is outlined rather than a
+                // second filled block competing with the camera button.
+                OutlinedButton(
                     onClick = onLaunchGallery,
-                    colors = ButtonDefaults.buttonColors(containerColor = DarkGreen),
                     shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, EmeraldGreen),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
+                    contentPadding = PaddingValues(horizontal = 8.dp),
                     modifier = Modifier
                         .weight(1f)
+                        .height(48.dp)
                         .testTag("ai_gallery_btn")
                 ) {
                     Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = str("choose_gallery"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(
+                        text = str("choose_gallery"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        maxLines = 1
+                    )
                 }
             }
         }
@@ -953,7 +972,7 @@ fun DiagnosisResultView(
     }
 }
 
-@Composable
+
 
 
 @Composable
