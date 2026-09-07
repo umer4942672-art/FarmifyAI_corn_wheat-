@@ -17,9 +17,42 @@ android {
     versionCode = 1
     versionName = "1.0"
 
-    val backendBaseUrl = providers.gradleProperty("backendBaseUrl")
-      .orElse("")
-      .get()
+    // Resolution order:
+    //   1. -PbackendBaseUrl=... on the Gradle command line (CI / release builds)
+    //   2. backendBaseUrl=... in gradle.properties
+    //   3. backendBaseUrl=... in app/.env      <- normal local development
+    //   4. backendBaseUrl=... in app/.env.example
+    //
+    // The Secrets Gradle Plugin reads .env into its OWN BuildConfig fields; it does
+    // NOT register Gradle properties. Relying on providers.gradleProperty() alone
+    // silently produced an empty BACKEND_BASE_URL, which made every cloud call fail
+    // and pushed the app onto its offline fallback path.
+    // providers.fileContents() is used instead of a plain File read so the
+    // configuration cache re-runs this block when app/.env actually changes.
+    fun readEnvValue(fileName: String, key: String): String? =
+      providers.fileContents(layout.projectDirectory.file(fileName)).asText.orNull
+        ?.lineSequence()
+        ?.map { it.trim() }
+        ?.firstOrNull { !it.startsWith("#") && it.startsWith("$key=") }
+        ?.substringAfter("=")
+        ?.trim()
+        ?.trim('"', '\'')
+        ?.takeIf { it.isNotBlank() && !it.contains("your-project") && !it.contains("your-backend") }
+
+    val backendBaseUrl = providers.gradleProperty("backendBaseUrl").orNull?.trim()?.takeIf { it.isNotBlank() }
+      ?: readEnvValue(".env", "backendBaseUrl")
+      ?: ""
+
+    if (backendBaseUrl.isBlank() || !backendBaseUrl.startsWith("https://")) {
+      logger.warn(
+        "FarmifyAI: backendBaseUrl is not set to an https:// URL. " +
+          "The app will build but every cloud feature (auth, sync, chat, mandi) will be disabled. " +
+          "Set it in app/.env or pass -PbackendBaseUrl=https://your-backend"
+      )
+    } else {
+      logger.lifecycle("FarmifyAI: backend = $backendBaseUrl")
+    }
+
     buildConfigField("String", "BACKEND_BASE_URL", "\"${backendBaseUrl.replace("\"", "\\\"")}\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -49,11 +49,20 @@ class UserRepository(
             val activeUser = userDao.getActiveUserDirect()
             if (activeUser != null) {
                 _profile.value = activeUser.toModel(isAuthenticated = true)
-                // Sync profile state to Supabase
-                supabaseDataSync.syncProfile(activeUser)
+
+                // Validate (and silently refresh) the stored Supabase session before
+                // trusting it. A stale access token used to keep the app looking
+                // "signed in" while every cloud write quietly failed.
+                val session = supabaseAuthService.getCurrentUser()
+                if (session.isSuccess) {
+                    supabaseDataSync.syncProfile(activeUser)
+                }
             }
         }
     }
+
+    /** True when a usable Supabase session exists (refreshing it if needed). */
+    suspend fun hasValidCloudSession(): Boolean = supabaseAuthService.hasValidSession()
 
     suspend fun login(identifier: String, password: String): Result<FarmerProfile> {
         val cleanKey = identifier.trim().replace(" ", "").replace("-", "").replace("+92", "0")
@@ -149,10 +158,47 @@ class UserRepository(
     }
 
     /** Password changes are completed only through Supabase's verified recovery link/OTP flow. */
-    suspend fun startGuestSession(): Result<Unit> {
+    suspend fun startGuestSession(): Result<FarmerProfile> {
         val result = supabaseAuthService.signInAnonymously()
-        return if (result.isSuccess && result.userId != null) Result.success(Unit)
-        else Result.failure(Exception(result.errorMessage ?: "Guest sign-in failed"))
+        if (!result.isSuccess || result.userId == null) {
+            return Result.failure(Exception(result.errorMessage ?: "Guest sign-in failed"))
+        }
+
+        // Previously only the token was stored, so isAuthenticated stayed false:
+        // the dashboard opened but scan history and khata filtered to an empty
+        // user key, and the next launch bounced back to the auth screen.
+        val guestKey = "guest-${result.userId.take(8)}"
+        val guestEntity = UserEntity(
+            phoneOrEmail = guestKey,
+            fullName = "Guest Kisan",
+            phone = "",
+            email = guestKey,
+            // Guests never sign in with a password; store an unusable random hash
+            // so nothing can authenticate against this row offline.
+            passwordHash = PasswordHasher.hash(java.util.UUID.randomUUID().toString()),
+            supabaseUserId = result.userId,
+            farmName = "Demo Farm",
+            district = "Faisalabad",
+            province = "Punjab",
+            farmLocation = "Faisalabad, Punjab",
+            totalAcres = 10.0,
+            primaryCropsString = "Wheat,Cotton",
+            isActiveSession = true
+        )
+        userDao.clearActiveSessions()
+        userDao.insertOrUpdateUser(guestEntity)
+
+        val profile = guestEntity.toModel(isAuthenticated = true)
+        _profile.value = profile
+        repositoryScope.launch { supabaseDataSync.syncProfile(guestEntity) }
+        return Result.success(profile)
+    }
+
+    /** Stable key used to scope local Room rows to the signed-in farmer. */
+    fun currentUserKey(): String {
+        val current = _profile.value
+        return current.phone.trim().replace(" ", "").replace("-", "").replace("+92", "0")
+            .ifBlank { current.email.trim() }
     }
 
     suspend fun recoverPassword(identifier: String, newPassword: String = ""): Result<String> {
@@ -209,7 +255,7 @@ class UserRepository(
             phoneOrEmail = primaryKey,
             fullName = fullName.trim().ifBlank { "Pakistani Kisan" },
             phone = cleanPhone.ifBlank { "03001234567" },
-            email = cleanEmail,
+            email = cleanEmail.orEmpty(),
             passwordHash = PasswordHasher.hash(password),
             supabaseUserId = cloudSignup.userId.orEmpty(),
             farmName = farmName.trim().ifBlank { "Apna Agri Farm" },
@@ -298,7 +344,10 @@ class UserRepository(
 
     suspend fun logout() {
         userDao.clearActiveSessions()
-        supabaseAuthService.clearSession()
+        // Revoke the session server-side so the refresh token cannot be reused,
+        // then clear the encrypted local copy. logout() clears locally even when
+        // the network call fails.
+        supabaseAuthService.logout()
         _profile.update { it.copy(isAuthenticated = false) }
     }
 

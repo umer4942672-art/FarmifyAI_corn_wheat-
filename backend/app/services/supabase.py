@@ -56,6 +56,29 @@ class SupabaseService:
             )
             return response.status_code, response.json()
 
+    async def refresh(self, refresh_token: str):
+        """Exchange a refresh token for a new short-lived access token."""
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/auth/v1/token?grant_type=refresh_token",
+                headers=self.headers(),
+                json={"refresh_token": refresh_token},
+            )
+            return response.status_code, response.json() if response.content else {}
+
+    async def sign_out(self, access_token: str):
+        """Revoke the Supabase session (and its refresh token) for this access token."""
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/auth/v1/logout",
+                headers=self.headers(access_token=access_token),
+            )
+            return response.status_code, response.text
+
     async def recover(self, email):
         if not self.configured:
             return self.configuration_error()
@@ -128,6 +151,27 @@ class SupabaseService:
             return response.status_code, response.text
 
 
+    async def update(self, table, params, payload):
+        """Ownership-safe UPDATE. `params` must always scope the row to its owner."""
+        if not self.configured:
+            return self.configuration_error()
+        headers = self.headers(service=True)
+        headers["Prefer"] = "return=representation"
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.patch(
+                f"{self.base}/rest/v1/{table}",
+                headers=headers,
+                params=params,
+                json=payload,
+            )
+            data = []
+            if response.content:
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = []
+            return response.status_code, data
+
     async def delete(self, table, params):
         if not self.configured: return self.configuration_error()
         async with httpx.AsyncClient(timeout=30) as client:
@@ -142,6 +186,12 @@ class SupabaseService:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(f"{self.base}/storage/v1/object/{bucket}/{path}", headers=headers, content=content)
             return r.status_code, r.json() if r.content else {}
+
+    async def delete_storage(self, bucket: str, path: str):
+        if not self.configured: return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.delete(f"{self.base}/storage/v1/object/{bucket}/{path}", headers=self.headers(service=True))
+            return r.status_code, r.text
 
     async def signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         if not self.configured: return self.configuration_error()

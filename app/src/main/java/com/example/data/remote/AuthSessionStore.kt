@@ -4,7 +4,13 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
-/** Keystore-backed storage for the short-lived Supabase access token and user id. */
+/**
+ * Keystore-backed storage for the Supabase session.
+ *
+ * Supabase access tokens are short lived (one hour by default), so the refresh
+ * token is persisted alongside them. Without it every cloud call would start
+ * failing silently roughly an hour after login.
+ */
 class AuthSessionStore(context: Context) {
     private val appContext = context.applicationContext
     private val masterKey = MasterKey.Builder(appContext)
@@ -20,12 +26,34 @@ class AuthSessionStore(context: Context) {
 
     init { migrateLegacyPlaintextSession() }
 
-    fun save(accessToken: String?, userId: String?) = prefs.edit()
-        .putString(KEY_ACCESS_TOKEN, accessToken.orEmpty())
-        .putString(KEY_USER_ID, userId.orEmpty())
-        .apply()
+    /**
+     * Stores a session. [refreshToken] is optional because some Supabase flows
+     * (for example email-confirmation signup) return a user without a session;
+     * in that case any previously stored refresh token is preserved only when a
+     * new one is not supplied.
+     */
+    fun save(accessToken: String?, userId: String?, refreshToken: String? = null) {
+        val editor = prefs.edit()
+            .putString(KEY_ACCESS_TOKEN, accessToken.orEmpty())
+            .putString(KEY_USER_ID, userId.orEmpty())
+        if (!refreshToken.isNullOrBlank()) {
+            editor.putString(KEY_REFRESH_TOKEN, refreshToken)
+        }
+        editor.apply()
+    }
+
+    /** Replaces only the rotated token pair, keeping the stored user id. */
+    fun updateTokens(accessToken: String?, refreshToken: String?) {
+        val editor = prefs.edit()
+        if (!accessToken.isNullOrBlank()) editor.putString(KEY_ACCESS_TOKEN, accessToken)
+        if (!refreshToken.isNullOrBlank()) editor.putString(KEY_REFRESH_TOKEN, refreshToken)
+        editor.apply()
+    }
+
     fun accessToken(): String? = prefs.getString(KEY_ACCESS_TOKEN, null)?.takeIf { it.isNotBlank() }
+    fun refreshToken(): String? = prefs.getString(KEY_REFRESH_TOKEN, null)?.takeIf { it.isNotBlank() }
     fun userId(): String? = prefs.getString(KEY_USER_ID, null)?.takeIf { it.isNotBlank() }
+    fun hasSession(): Boolean = accessToken() != null
     fun clear() = prefs.edit().clear().apply()
 
     private fun migrateLegacyPlaintextSession() {
@@ -46,6 +74,7 @@ class AuthSessionStore(context: Context) {
         private const val SECURE_PREFS_NAME = "farmify_auth_session_secure"
         private const val LEGACY_PREFS_NAME = "farmify_auth_session"
         private const val KEY_ACCESS_TOKEN = "access_token"
+        private const val KEY_REFRESH_TOKEN = "refresh_token"
         private const val KEY_USER_ID = "user_id"
     }
 }

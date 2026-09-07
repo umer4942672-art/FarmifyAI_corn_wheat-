@@ -95,6 +95,52 @@ async def disease(x: Payload, user: dict = Depends(require_user)):
     return {"success": True}
 
 
+@router.delete("/sync/khata/{local_id}")
+async def delete_khata(local_id: str, user: dict = Depends(require_user)):
+    """Remove a khata row the Android client deleted locally.
+
+    The row id is re-derived from the caller's own user id, so a caller can
+    never target a record that is not theirs.
+    """
+    row_id = stable_uuid(user["id"], "khata", local_id)
+    code, text = await supabase.delete(
+        "khata_transactions",
+        {"id": f"eq.{row_id}", "user_id": f'eq.{user["id"]}'},
+    )
+    if code >= 400:
+        raise HTTPException(code, text)
+    return {"success": True, "id": row_id}
+
+
+@router.delete("/sync/disease/{local_id}")
+async def delete_disease(local_id: str, user: dict = Depends(require_user)):
+    """Remove a disease scan (and its stored image) deleted on the device."""
+    row_id = stable_uuid(user["id"], "disease", local_id)
+    image_id = stable_uuid(user["id"], "image", local_id)
+
+    code, rows = await supabase.select(
+        "disease_detections",
+        {"select": "image_url", "id": f"eq.{row_id}", "user_id": f'eq.{user["id"]}'},
+    )
+    stored_path = ""
+    if code < 400 and isinstance(rows, list) and rows:
+        stored_path = rows[0].get("image_url") or ""
+
+    code, text = await supabase.delete(
+        "disease_detections",
+        {"id": f"eq.{row_id}", "user_id": f'eq.{user["id"]}'},
+    )
+    if code >= 400:
+        raise HTTPException(code, text)
+
+    # Best effort image cleanup; the DB row is already gone either way.
+    for path in {stored_path, f'{user["id"]}/{image_id}.jpg'}:
+        if path and path.startswith(user["id"] + "/"):
+            await supabase.delete_storage("disease-images", path)
+
+    return {"success": True, "id": row_id}
+
+
 @router.get("/mandi/rates")
 async def mandi_rates():
     code, data = await supabase.select(

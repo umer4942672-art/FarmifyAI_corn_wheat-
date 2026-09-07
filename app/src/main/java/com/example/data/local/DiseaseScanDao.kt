@@ -32,4 +32,25 @@ interface DiseaseScanDao {
 
     @Query("SELECT COUNT(*) FROM disease_scans")
     suspend fun getCount(): Int
+
+    /** Recent scans for a user, used by the retry pass to re-push unsynced history. */
+    @Query("SELECT * FROM disease_scans WHERE userId = :userId ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getRecentScansForUser(userId: String, limit: Int): List<DiseaseScanEntity>
+
+    /** Used when restoring from the cloud so an existing local scan is not duplicated. */
+    @Query(
+        """
+        SELECT COUNT(*) FROM disease_scans
+        WHERE userId = :userId
+          AND cropName = :cropName
+          AND diseaseNameEn = :diseaseNameEn
+          AND confidencePercent = :confidencePercent
+        """
+    )
+    suspend fun countMatching(
+        userId: String,
+        cropName: String,
+        diseaseNameEn: String,
+        confidencePercent: Int
+    ): Int
 }

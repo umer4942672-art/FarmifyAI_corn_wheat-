@@ -41,10 +41,23 @@ async def create_crop(x: CropIn, user: dict = Depends(require_user)):
 
 @router.put('/crops/{crop_id}')
 async def update_crop(crop_id:str,x:CropIn,user:dict=Depends(require_user)):
+    # Never upsert here. An upsert on a client-supplied id would let a caller
+    # overwrite another user's row and reassign its user_id to themselves.
+    # A PATCH scoped by BOTH id and user_id can only ever touch the caller's own row.
     payload=x.model_dump(exclude={'local_id'})
-    code,text=await supabase.upsert('user_crops',{'id':crop_id,'user_id':user['id'],**payload})
-    if code>=400: raise HTTPException(code,text)
-    return {'success':True}
+    payload.pop('id',None)
+    payload.pop('user_id',None)
+    code,rows=await supabase.update(
+        'user_crops',
+        {'id':f'eq.{crop_id}','user_id':f'eq.{user["id"]}'},
+        payload,
+    )
+    if code>=400: raise HTTPException(code,str(rows))
+    if not rows:
+        # Either the crop does not exist or it belongs to somebody else.
+        # Both cases return 404 so the endpoint cannot be used to probe for ids.
+        raise HTTPException(404,'Crop not found')
+    return {'success':True,'id':crop_id}
 
 @router.delete('/crops/{crop_id}')
 async def delete_crop(crop_id:str,user:dict=Depends(require_user)):

@@ -4,13 +4,13 @@ import android.content.Context
 import com.example.data.model.ChatMessage
 import com.example.data.model.MessageSender
 import com.example.data.remote.ApiConfig
-import com.example.data.remote.AuthSessionStore
+import com.example.data.remote.AuthorizedApiClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Locale
 
 /**
@@ -21,7 +21,7 @@ import java.util.Locale
  * and uses the configured Google Gemini model to generate the response.
  */
 class KisanChatRepository(context: Context, private val mandiRepository: MandiRepository) {
-    private val session = AuthSessionStore(context.applicationContext)
+    private val api = AuthorizedApiClient(context.applicationContext)
 
     suspend fun getAgriAiResponse(
         userQuery: String,
@@ -86,46 +86,47 @@ class KisanChatRepository(context: Context, private val mandiRepository: MandiRe
         )
     }
 
-    private fun callCustomAgricultureApi(
+    /**
+     * Posts the question to the backend chatbot.
+     * Routed through AuthorizedApiClient so an expired Supabase access token is
+     * refreshed and the request retried, instead of the farmer seeing a generic
+     * "assistant unavailable" message an hour after logging in.
+     */
+    private suspend fun callCustomAgricultureApi(
         userQuery: String,
         chatHistory: List<ChatMessage>,
         isUrdu: Boolean
     ): String? {
-        val endpoint = ApiConfig.endpoint("/api/chat")
-        val conn = URL(endpoint).openConnection() as HttpURLConnection
-        return try {
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            session.accessToken()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
-            conn.doOutput = true
-            conn.connectTimeout = 30000
-            conn.readTimeout = 90000
+        if (!ApiConfig.isConfigured) return null
 
-            val history = JSONArray()
-            chatHistory.takeLast(6).forEach { msg ->
-                val text = msg.textUr?.ifBlank { msg.textEn } ?: msg.textEn
-                history.put(
-                    JSONObject().apply {
-                        put("role", if (msg.sender == MessageSender.USER) "user" else "assistant")
-                        put("text", text.take(4000))
-                    }
-                )
-            }
-
-            val body = JSONObject().apply {
-                put("message", userQuery)
-                put("language", if (isUrdu) "ur" else "en")
-                put("history", history)
-            }
-            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            if (conn.responseCode !in 200..299) return null
-
-            JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-                .optString("answer")
-                .ifBlank { null }
-        } finally {
-            conn.disconnect()
+        val history = JSONArray()
+        chatHistory.takeLast(6).forEach { msg ->
+            val text = msg.textUr?.ifBlank { msg.textEn } ?: msg.textEn
+            history.put(
+                JSONObject().apply {
+                    put("role", if (msg.sender == MessageSender.USER) "user" else "assistant")
+                    put("text", text.take(4000))
+                }
+            )
         }
+
+        val body = JSONObject().apply {
+            put("message", userQuery)
+            put("language", if (isUrdu) "ur" else "en")
+            put("history", history)
+        }.toString()
+
+        val response = api.call { token ->
+            Request.Builder()
+                .url(ApiConfig.endpoint("/api/chat"))
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json")
+                .post(body.toRequestBody(AuthorizedApiClient.JSON))
+                .build()
+        } ?: return null
+
+        if (!response.isSuccessful) return null
+        return response.json().optString("answer").ifBlank { null }
     }
 
     private fun getSuggestedFollowUps(query: String, isUrdu: Boolean): List<String> {

@@ -7,6 +7,7 @@ import com.example.data.local.DiseaseScanEntity
 import com.example.data.model.DiseaseCrop
 import com.example.data.model.PlantDiseaseResult
 import com.example.data.model.CornTFLiteClassifier
+import com.example.data.model.PlantImageGate
 import com.example.data.model.TFLitePlantClassifier
 import com.example.data.remote.SupabaseDataSyncService
 import kotlinx.coroutines.Dispatchers
@@ -83,7 +84,18 @@ class DiseaseDetectionRepository(
     }
 
     suspend fun deleteScan(id: Long) = withContext(Dispatchers.IO) {
+        val existing = diseaseScanDao.getScanById(id)
         diseaseScanDao.deleteById(id)
+
+        // Remove the local image file too, otherwise deleted scans keep filling storage.
+        existing?.imageUriOrPath
+            ?.takeIf { it.isNotBlank() && !it.startsWith("content://") }
+            ?.let { path -> runCatching { java.io.File(path).delete() } }
+
+        // Delete the cloud copy as well; previously the row stayed in Supabase
+        // forever and reappeared on the next restore.
+        runCatching { supabaseSync.deleteDiseaseDetection(id) }
+        Unit
     }
 
     /**
@@ -97,6 +109,14 @@ class DiseaseDetectionRepository(
         bitmap: Bitmap,
         selectedCrop: DiseaseCrop = DiseaseCrop.WHEAT
     ): PlantDiseaseResult = withContext(Dispatchers.IO) {
+        // A disease classifier only knows its own trained classes; shown any
+        // out-of-distribution photo it will still return one of them with a
+        // usable-looking confidence. The visual pre-filter rejects obvious
+        // non-plant images before they ever reach the model.
+        if (!PlantImageGate.isLikelyPlant(bitmap)) {
+            return@withContext createNonPlantResult(selectedCrop)
+        }
+
         when (selectedCrop) {
             DiseaseCrop.WHEAT -> {
                 val classifier = wheatClassifier
@@ -123,6 +143,25 @@ class DiseaseDetectionRepository(
         wheatClassifier?.close()
         cornClassifier?.close()
     }
+
+    private fun createNonPlantResult(selectedCrop: DiseaseCrop): PlantDiseaseResult =
+        PlantDiseaseResult(
+            cropName = if (selectedCrop == DiseaseCrop.CORN) "Corn / مکئی" else "Wheat / گندم",
+            diseaseNameEn = "No plant leaf detected in this photo",
+            diseaseNameUr = "اس تصویر میں پودے کا پتہ نظر نہیں آیا",
+            confidencePercent = 0,
+            isHealthy = false,
+            severityLevel = "Unknown",
+            symptomsEn = "The image does not show the colour and texture pattern of plant foliage, so it was not sent to the disease model.",
+            symptomsUr = "تصویر میں پودے کے پتوں جیسا رنگ اور بناوٹ موجود نہیں، اس لیے اسے بیماری کے ماڈل تک نہیں بھیجا گیا۔",
+            chemicalTreatmentEn = "No diagnosis was produced, so no treatment should be applied.",
+            chemicalTreatmentUr = "کوئی تشخیص نہیں ہوئی، اس لیے کوئی علاج نہ کریں۔",
+            organicPreventionEn = "Photograph a single leaf close up, filling most of the frame, in good natural light.",
+            organicPreventionUr = "ایک پتے کی قریبی تصویر لیں جو زیادہ تر فریم بھرے، اچھی قدرتی روشنی میں۔",
+            advisoryNoteEn = "Rejected by the plant pre-filter before model inference, so no disease class was guessed for a non-plant image.",
+            advisoryNoteUr = "ماڈل چلنے سے پہلے ہی پری فلٹر نے اس تصویر کو مسترد کر دیا، اس لیے کوئی بیماری کا اندازہ نہیں لگایا گیا۔",
+            isPlantImage = false
+        )
 
     private fun createUncertainResult(selectedCrop: DiseaseCrop): PlantDiseaseResult =
         PlantDiseaseResult(

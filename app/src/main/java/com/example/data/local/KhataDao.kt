@@ -43,6 +43,32 @@ interface KhataDao {
     @Query("UPDATE khata_entries SET isSynced = :synced WHERE id = :id")
     suspend fun setSynced(id: Long, synced: Boolean)
 
+    /** Rows that never reached Supabase, oldest first, for the background retry pass. */
+    @Query("SELECT * FROM khata_entries WHERE isSynced = 0 ORDER BY timestamp ASC LIMIT :limit")
+    suspend fun getUnsyncedEntries(limit: Int): List<KhataEntryEntity>
+
+    @Query("SELECT COUNT(*) FROM khata_entries WHERE isSynced = 0")
+    suspend fun getUnsyncedCount(): Int
+
+    /** Used when restoring from the cloud so an existing local row is not duplicated. */
+    @Query(
+        """
+        SELECT COUNT(*) FROM khata_entries
+        WHERE userId = :userId
+          AND date = :date
+          AND entryType = :entryType
+          AND cropName = :cropName
+          AND totalAmount = :totalAmount
+        """
+    )
+    suspend fun countMatching(
+        userId: String,
+        date: String,
+        entryType: String,
+        cropName: String,
+        totalAmount: Double
+    ): Int
+
     @Query("DELETE FROM khata_entries WHERE id = :id")
     suspend fun deleteById(id: Long)
 

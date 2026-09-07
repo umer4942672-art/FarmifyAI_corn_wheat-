@@ -56,6 +56,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val weatherRepository = WeatherRepository()
     val diseaseRepository = DiseaseDetectionRepository(db.diseaseScanDao(), application)
     val userRepository = UserRepository(db.userDao(), application)
+    val cloudSyncRepository = CloudSyncRepository(db.khataDao(), db.diseaseScanDao(), application)
 
     // Language state
     private val _currentLanguage = MutableStateFlow(AppLanguage.ENGLISH)
@@ -319,6 +320,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             weatherRepository.refreshWeather()
             mandiRepository.refreshRates()
             syncWithSupabaseNow()
+            // Push anything that failed to reach Supabase in an earlier session.
+            retryPendingCloudSync()
+        }
+    }
+
+    /**
+     * Pulls the farmer's cloud state back into Room. Called after a successful
+     * login/signup so a fresh install or a new phone shows the existing ledger
+     * and scan history instead of an empty screen.
+     */
+    fun restoreCloudData(showFeedback: Boolean = true) {
+        viewModelScope.launch {
+            val userKey = currentUserKey()
+            if (userKey.isBlank()) return@launch
+            val summary = cloudSyncRepository.restoreFromCloud(userKey)
+            val restored = summary.khataRestored + summary.diseaseRestored
+            if (showFeedback && summary.ok && restored > 0) {
+                _userFeedback.emit("کلاؤڈ سے $restored ریکارڈ بحال ہوئے (Restored $restored records from cloud)")
+            }
+        }
+    }
+
+    /** Re-sends locally stored rows that never reached Supabase. */
+    fun retryPendingCloudSync() {
+        viewModelScope.launch {
+            if (!userProfile.value.isAuthenticated) return@launch
+            runCatching { cloudSyncRepository.retryPendingSync(currentUserKey()) }
         }
     }
 
@@ -628,6 +656,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val result = userRepository.login(identifier, pass)
         return if (result.isSuccess) {
             _userFeedback.emit("خوش آمدید! Welcome ${result.getOrNull()?.fullName ?: ""}")
+            // Bring this farmer's Supabase records down to the device, then push
+            // anything still pending from a previous offline session.
+            restoreCloudData()
+            retryPendingCloudSync()
             true
         } else {
             _userFeedback.emit(result.exceptionOrNull()?.message ?: "Login failed")
@@ -651,6 +683,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
         return if (result.isSuccess) {
             _userFeedback.emit("اکاؤنٹ بن گیا! Account created for ${fullName}")
+            // A re-registration on a new device may already have cloud records.
+            restoreCloudData(showFeedback = false)
+            retryPendingCloudSync()
             true
         } else {
             _userFeedback.emit(result.exceptionOrNull()?.message ?: "Signup failed. Please check inputs.")
@@ -671,8 +706,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun quickDemoLogin(): Boolean {
         val res = userRepository.startGuestSession()
-        if (res.isSuccess) _userFeedback.emit("Guest session started")
-        else _userFeedback.emit(res.exceptionOrNull()?.message ?: "Guest sign-in failed")
+        if (res.isSuccess) {
+            // startGuestSession now also marks the profile authenticated and
+            // creates the local row, so history and khata scope correctly.
+            _userFeedback.emit("Guest session started")
+            restoreCloudData(showFeedback = false)
+        } else {
+            _userFeedback.emit(res.exceptionOrNull()?.message ?: "Guest sign-in failed")
+        }
         return res.isSuccess
     }
 

@@ -53,6 +53,24 @@ class KhataRepository(
 
     suspend fun deleteEntry(id: Long) = withContext(Dispatchers.IO) {
         khataDao.deleteById(id)
+        // Also remove the Supabase row, otherwise a deleted entry comes back on
+        // the next cloud restore.
+        runCatching { supabaseSync.deleteKhataTransaction(id) }
+        Unit
+    }
+
+    /** Re-sends every locally stored entry that never reached Supabase. */
+    suspend fun retryUnsyncedEntries(): Int = withContext(Dispatchers.IO) {
+        var pushed = 0
+        runCatching {
+            khataDao.getUnsyncedEntries(200).forEach { entry ->
+                if (supabaseSync.syncKhataTransaction(entry)) {
+                    khataDao.setSynced(entry.id, true)
+                    pushed++
+                }
+            }
+        }
+        pushed
     }
 
     suspend fun deleteUserEntries(userId: String) = withContext(Dispatchers.IO) {
