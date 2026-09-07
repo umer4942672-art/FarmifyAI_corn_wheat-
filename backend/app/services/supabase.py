@@ -128,4 +128,29 @@ class SupabaseService:
             return response.status_code, response.text
 
 
+    async def delete(self, table, params):
+        if not self.configured: return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.delete(f"{self.base}/rest/v1/{table}", headers=self.headers(service=True), params=params)
+            return r.status_code, r.text
+
+    async def upload_storage(self, bucket: str, path: str, content: bytes, content_type: str):
+        if not self.configured: return self.configuration_error()
+        headers = self.headers(service=True)
+        headers["Content-Type"] = content_type
+        headers["x-upsert"] = "true"
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(f"{self.base}/storage/v1/object/{bucket}/{path}", headers=headers, content=content)
+            return r.status_code, r.json() if r.content else {}
+
+    async def signed_url(self, bucket: str, path: str, expires_in: int = 3600):
+        if not self.configured: return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post(f"{self.base}/storage/v1/object/sign/{bucket}/{path}", headers=self.headers(service=True), json={"expiresIn": expires_in})
+            data = r.json() if r.content else {}
+            if r.status_code < 400 and data.get("signedURL"):
+                data["url"] = f"{self.base}/storage/v1{data['signedURL']}"
+            return r.status_code, data
+
+
 supabase = SupabaseService()

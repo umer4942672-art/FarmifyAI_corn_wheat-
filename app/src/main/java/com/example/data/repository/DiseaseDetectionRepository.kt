@@ -70,7 +70,11 @@ class DiseaseDetectionRepository(
         val id = diseaseScanDao.insertScan(entity)
 
         try {
-            supabaseSync.syncDiseaseDetection(entity.copy(id = id))
+            val cloudEntity = entity.copy(id = id)
+            supabaseSync.syncDiseaseDetection(cloudEntity)
+            if (cloudEntity.imageUriOrPath.isNotBlank() && !cloudEntity.imageUriOrPath.startsWith("content://")) {
+                supabaseSync.uploadDiseaseImage(cloudEntity.imageUriOrPath, "db:$id", cloudEntity.cropName)
+            }
         } catch (_: Exception) {
             // Local Room record remains safe if cloud sync is unavailable.
         }

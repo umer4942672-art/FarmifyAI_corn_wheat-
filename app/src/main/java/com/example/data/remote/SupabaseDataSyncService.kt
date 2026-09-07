@@ -10,6 +10,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
 import org.json.JSONObject
 
 /** Sends cloud data through the authenticated FarmifyAI backend. */
@@ -90,4 +93,25 @@ class SupabaseDataSyncService(context: Context) {
             put("recommendation", s.advisoryNote)
         }
     )
+    /** Uploads the original disease image through Vercel to private Supabase Storage. */
+    suspend fun uploadDiseaseImage(filePath: String, localId: String, cropName: String): Result<String> = withContext(Dispatchers.IO) {
+        val token = session.accessToken() ?: return@withContext Result.failure(Exception("No active session"))
+        try {
+            val file = File(filePath)
+            if (!file.exists()) return@withContext Result.failure(Exception("Image file not found"))
+            val multipart = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("local_id", localId)
+                .addFormDataPart("crop_name", cropName)
+                .addFormDataPart("file", file.name, file.asRequestBody("image/jpeg".toMediaType()))
+                .build()
+            val request = Request.Builder().url(ApiConfig.endpoint("/api/disease-images/upload"))
+                .header("Authorization", "Bearer $token").post(multipart).build()
+            client.newCall(request).execute().use { response ->
+                val json = JSONObject(response.body?.string().orEmpty())
+                if (!response.isSuccessful) return@withContext Result.failure(Exception(json.optString("detail", "Image upload failed")))
+                Result.success(json.optString("path"))
+            }
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
 }

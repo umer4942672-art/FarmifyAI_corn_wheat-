@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, sync, chat
+from app.routers import auth, sync, chat, data
 
 app = FastAPI(title="FarmifyAI Backend", version="3.0.0")
 
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(sync.router)
 app.include_router(chat.router)
+app.include_router(data.router)
 
 
 @app.get("/")

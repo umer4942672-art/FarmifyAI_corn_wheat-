@@ -101,5 +101,57 @@ class SupabaseAuthService(context: Context) {
     suspend fun recoverPassword(email: String) =
         post("/api/auth/forgot-password", JSONObject().put("email", email.trim()))
 
+    suspend fun getCurrentUser(): SupabaseAuthResult = withContext(Dispatchers.IO) {
+        val token = session.accessToken()
+            ?: return@withContext SupabaseAuthResult(false, errorMessage = "No active session")
+        try {
+            val request = Request.Builder()
+                .url(ApiConfig.endpoint("/api/auth/me"))
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                val text = response.body?.string().orEmpty()
+                val json = if (text.isNotBlank()) JSONObject(text) else JSONObject()
+                if (!response.isSuccessful) {
+                    return@withContext SupabaseAuthResult(false, errorMessage = json.optString("detail", "Session validation failed"))
+                }
+                val user = json.optJSONObject("user")
+                SupabaseAuthResult(
+                    isSuccess = true,
+                    userId = user?.optString("id")?.takeIf { it.isNotBlank() },
+                    email = user?.optString("email")?.takeIf { it.isNotBlank() },
+                    accessToken = token
+                )
+            }
+        } catch (e: Exception) {
+            SupabaseAuthResult(false, errorMessage = "Backend connection failed: ${e.localizedMessage ?: "network error"}")
+        }
+    }
+
+    suspend fun logout(): Boolean = withContext(Dispatchers.IO) {
+        val token = session.accessToken()
+        if (token == null) {
+            session.clear()
+            return@withContext true
+        }
+        try {
+            val request = Request.Builder()
+                .url(ApiConfig.endpoint("/api/auth/logout"))
+                .header("Authorization", "Bearer $token")
+                .post("".toRequestBody(media))
+                .build()
+            client.newCall(request).execute().use { response ->
+                val ok = response.isSuccessful
+                // Always clear the local encrypted session so the app cannot reuse a stale token.
+                session.clear()
+                ok
+            }
+        } catch (_: Exception) {
+            session.clear()
+            true
+        }
+    }
+
     fun clearSession() = session.clear()
 }

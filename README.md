@@ -36,3 +36,7 @@ Required backend secrets: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE
 - Keep Supabase service-role key server-side only.
 - Replace demo mandi seed data with a verified live data provider before production claims.
 - Test RLS with multiple accounts.
+
+
+## Cloud-first data flow
+All Android cloud operations use the Vercel API only: `Auth -> Vercel -> Supabase Auth`, `Crops CRUD -> Vercel -> user_crops`, `Khata -> Vercel -> khata_transactions`, `Disease history/images -> Vercel -> private Supabase Storage`, and `Chat -> Vercel -> Gemini + Supabase history`. The backend also exposes `GET /api/sync/bootstrap` for restoring profile, crops, khata and disease history after login.
