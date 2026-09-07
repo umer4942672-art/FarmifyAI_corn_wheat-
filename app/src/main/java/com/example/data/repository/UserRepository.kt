@@ -58,10 +58,10 @@ class UserRepository(
     suspend fun login(identifier: String, password: String): Result<FarmerProfile> {
         val cleanKey = identifier.trim().replace(" ", "").replace("-", "").replace("+92", "0")
         val isEmail = identifier.contains("@")
-        val emailToTry = if (isEmail) identifier.trim().lowercase() else "$cleanKey@farmify.pk"
+        val emailToTry = if (isEmail) identifier.trim().lowercase() else null
 
         // 1. Try Supabase Cloud Auth API
-        val cloudAuth = supabaseAuthService.signInWithPassword(emailToTry, password)
+        val cloudAuth = supabaseAuthService.signInWithPassword(if (isEmail) emailToTry!! else normalizePhone(cleanKey), password)
         if (cloudAuth.isSuccess) {
             val meta = cloudAuth.userMetadata
             val name = (meta["name"] as? String)?.ifBlank { null }
@@ -78,7 +78,7 @@ class UserRepository(
                 phoneOrEmail = cleanKey,
                 fullName = name,
                 phone = if (!isEmail) cleanKey else "03001234567",
-                email = emailToTry,
+                email = emailToTry ?: "",
                 passwordHash = PasswordHasher.hash(password),
                 supabaseUserId = cloudAuth.userId.orEmpty(),
                 farmName = farmName,
@@ -115,7 +115,7 @@ class UserRepository(
 
         // 3. Fallback to Local Room database if an account already exists.
         val existing = userDao.getUserByPhoneOrEmail(cleanKey)
-            ?: userDao.getUserByPhoneOrEmail(emailToTry)
+            ?: emailToTry?.let { userDao.getUserByPhoneOrEmail(it) }
 
         if (existing != null) {
             val valid = PasswordHasher.verify(password, existing.passwordHash) ||
@@ -179,8 +179,8 @@ class UserRepository(
         primaryCrops: List<String>
     ): Result<FarmerProfile> {
         val cleanPhone = phone.trim().replace(" ", "").replace("-", "").replace("+92", "0")
-        val cleanEmail = if (email.isNotBlank()) email.trim().lowercase() else "${cleanPhone.ifBlank { "farmer_${System.currentTimeMillis()}" }}@farmify.pk"
-        val primaryKey = cleanPhone.ifBlank { cleanEmail }
+        val cleanEmail = email.trim().lowercase().takeIf { it.isNotBlank() }
+        val primaryKey = cleanPhone.ifBlank { cleanEmail.orEmpty() }
 
         // 1. Try Supabase Cloud Sign-Up
         val metaMap = mapOf(
@@ -194,7 +194,7 @@ class UserRepository(
             "totalAcres" to (if (totalAcres > 0) totalAcres else 10.0),
             "primaryCrops" to if (primaryCrops.isNotEmpty()) primaryCrops.joinToString(", ") else "Wheat, Cotton"
         )
-        val cloudSignup = supabaseAuthService.signUp(cleanEmail, password, metaMap)
+        val cloudSignup = supabaseAuthService.signUp(email = cleanEmail.orEmpty(), phone = if (cleanEmail == null) normalizePhone(cleanPhone) else null, password = password, metadata = metaMap)
         if (!cloudSignup.isSuccess &&
             cloudSignup.errorMessage?.startsWith("Backend connection failed", ignoreCase = true) != true) {
             return Result.failure(Exception(cloudSignup.errorMessage ?: "Signup failed"))
@@ -319,5 +319,15 @@ class UserRepository(
             diseaseAlerts = this.diseaseAlerts,
             khataReminders = this.khataReminders
         )
+    }
+}
+
+
+private fun normalizePhone(value: String): String {
+    val digits = value.filter { it.isDigit() }
+    return when {
+        digits.startsWith("92") -> "+$digits"
+        digits.startsWith("0") -> "+92${digits.drop(1)}"
+        else -> "+92$digits"
     }
 }

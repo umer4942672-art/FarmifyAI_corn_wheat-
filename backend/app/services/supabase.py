@@ -45,14 +45,14 @@ class SupabaseService:
             response = await client.post(f"{self.base}/auth/v1/signup", headers=self.headers(), json={"data": {"guest": True}})
             return response.status_code, response.json() if response.content else {}
 
-    async def login(self, email, password):
+    async def login(self, identifier, password, is_phone: bool = False):
         if not self.configured:
             return self.configuration_error()
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 f"{self.base}/auth/v1/token?grant_type=password",
                 headers=self.headers(),
-                json={"email": email, "password": password},
+                json=({"phone": identifier, "password": password} if is_phone else {"email": identifier, "password": password}),
             )
             return response.status_code, response.json()
 

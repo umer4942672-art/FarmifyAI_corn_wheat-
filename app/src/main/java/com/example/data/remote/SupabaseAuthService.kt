@@ -65,12 +65,12 @@ class SupabaseAuthService(context: Context) {
         }
     }
 
-    suspend fun signUp(email: String, password: String, metadata: Map<String, Any> = emptyMap()): SupabaseAuthResult {
+    suspend fun signUp(email: String? = null, phone: String? = null, password: String, metadata: Map<String, Any> = emptyMap()): SupabaseAuthResult {
         val meta = JSONObject()
         metadata.forEach { (key, value) -> meta.put(key, value) }
         val result = post(
             "/api/auth/signup",
-            JSONObject().put("email", email.trim()).put("password", password).put("metadata", meta)
+            JSONObject().apply { if (!email.isNullOrBlank()) put("email", email.trim()); if (!phone.isNullOrBlank()) put("phone", phone.trim()); put("password", password); put("metadata", meta) }
         )
         if (result.isSuccess && result.accessToken != null) {
             session.save(result.accessToken, result.userId)
@@ -87,10 +87,13 @@ class SupabaseAuthService(context: Context) {
         return result
     }
 
-    suspend fun signInWithPassword(email: String, password: String): SupabaseAuthResult {
+    suspend fun signInWithPassword(identifier: String, password: String): SupabaseAuthResult {
+        val isEmail = identifier.contains("@")
+        val phone = if (isEmail) null else identifier.trim()
+        val email = if (isEmail) identifier.trim() else null
         val result = post(
             "/api/auth/login",
-            JSONObject().put("email", email.trim()).put("password", password)
+            JSONObject().apply { if (email != null) put("email", email); if (phone != null) put("phone", phone); put("password", password) }
         )
         if (result.isSuccess && result.accessToken != null) {
             session.save(result.accessToken, result.userId)

@@ -7,12 +7,14 @@ from app.services.supabase import supabase
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 class Signup(BaseModel):
-    email: str
+    email: str | None = None
+    phone: str | None = None
     password: str
     metadata: dict = {}
 
 class Login(BaseModel):
-    email: str
+    email: str | None = None
+    phone: str | None = None
     password: str
 
 class Recover(BaseModel):
@@ -20,7 +22,14 @@ class Recover(BaseModel):
 
 @router.post('/signup')
 async def signup(x: Signup):
-    code, data = await supabase.signup({"email": x.email, "password": x.password, "data": x.metadata})
+    if not x.email and not x.phone:
+        raise HTTPException(422, "Provide either email or phone")
+    payload = {"password": x.password, "data": x.metadata}
+    if x.phone:
+        payload["phone"] = x.phone
+    else:
+        payload["email"] = x.email
+    code, data = await supabase.signup(payload)
     if code >= 400:
         raise HTTPException(code, data.get('msg') or data.get('message') or 'Signup failed')
     return {"success": True, "user": data.get('user'), "access_token": data.get('access_token'), "refresh_token": data.get('refresh_token')}
@@ -34,7 +43,9 @@ async def guest():
 
 @router.post('/login')
 async def login(x: Login):
-    code, data = await supabase.login(x.email, x.password)
+    if not x.email and not x.phone:
+        raise HTTPException(422, "Provide either email or phone")
+    code, data = await supabase.login(x.phone or x.email, x.password, is_phone=bool(x.phone))
     if code >= 400:
         raise HTTPException(code, data.get('msg') or data.get('message') or 'Login failed')
     return {"success": True, "user": data.get('user'), "access_token": data.get('access_token'), "refresh_token": data.get('refresh_token')}
