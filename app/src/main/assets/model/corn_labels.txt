@@ -1,0 +1,5 @@
+Blight
+Common_Rust
+Gray_Leaf_Spot
+Healthy
+Insect_Damage

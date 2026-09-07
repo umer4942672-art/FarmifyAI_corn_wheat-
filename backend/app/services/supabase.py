@@ -1,0 +1,131 @@
+import httpx
+from app.config import settings
+
+
+class SupabaseService:
+    def __init__(self):
+        self.base = settings.supabase_url.rstrip("/")
+
+    @property
+    def configured(self) -> bool:
+        return bool(
+            self.base
+            and settings.supabase_anon_key
+            and settings.supabase_service_role_key
+            and self.base.startswith(("http://", "https://"))
+        )
+
+    def configuration_error(self):
+        return 503, {"message": "Supabase backend is not configured. Set SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY."}
+
+    def headers(self, service: bool = False, access_token: str | None = None):
+        key = settings.supabase_service_role_key if service else settings.supabase_anon_key
+        headers = {
+            "apikey": key,
+            "Content-Type": "application/json",
+        }
+        headers["Authorization"] = f"Bearer {access_token or key}"
+        return headers
+
+    async def signup(self, payload):
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/auth/v1/signup",
+                headers=self.headers(),
+                json=payload,
+            )
+            return response.status_code, response.json()
+
+    async def anonymous_signup(self):
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(f"{self.base}/auth/v1/signup", headers=self.headers(), json={"data": {"guest": True}})
+            return response.status_code, response.json() if response.content else {}
+
+    async def login(self, email, password):
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/auth/v1/token?grant_type=password",
+                headers=self.headers(),
+                json={"email": email, "password": password},
+            )
+            return response.status_code, response.json()
+
+    async def recover(self, email):
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/auth/v1/recover",
+                headers=self.headers(),
+                json={"email": email},
+            )
+            return response.status_code, response.json() if response.content else {}
+
+    async def get_user(self, access_token: str):
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{self.base}/auth/v1/user",
+                headers=self.headers(access_token=access_token),
+            )
+            if response.status_code >= 400:
+                return response.status_code, {}
+            return response.status_code, response.json()
+
+    async def select(self, table, params=None):
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{self.base}/rest/v1/{table}",
+                headers=self.headers(service=True),
+                params=params or {},
+            )
+            return response.status_code, response.json() if response.content else []
+
+    async def insert(self, table, payload):
+        if not self.configured:
+            return self.configuration_error()
+        headers = self.headers(service=True)
+        headers["Prefer"] = "return=minimal"
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/rest/v1/{table}",
+                headers=headers,
+                json=payload,
+            )
+            return response.status_code, response.text
+
+    async def rpc(self, function_name, payload):
+        if not self.configured:
+            return self.configuration_error()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/rest/v1/rpc/{function_name}",
+                headers=self.headers(service=True),
+                json=payload,
+            )
+            return response.status_code, response.json() if response.content else []
+
+    async def upsert(self, table, payload):
+        if not self.configured:
+            return self.configuration_error()
+        headers = self.headers(service=True)
+        headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/rest/v1/{table}",
+                headers=headers,
+                json=payload,
+            )
+            return response.status_code, response.text
+
+
+supabase = SupabaseService()
