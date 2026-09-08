@@ -32,6 +32,17 @@ class SupabaseAuthService(context: Context) {
     private val api = AuthorizedApiClient(appContext)
 
     private suspend fun post(path: String, body: JSONObject): SupabaseAuthResult = withContext(Dispatchers.IO) {
+        // Checked before the try block. A missing backend URL used to throw inside
+        // it and be caught as "Backend connection failed", which UserRepository
+        // reads as "the server is down" and falls back to offline login. The user
+        // then sees "invalid credentials" for what is really a build problem.
+        if (!ApiConfig.isConfigured) {
+            return@withContext SupabaseAuthResult(
+                false,
+                errorMessage = "This build has no backend URL, so it cannot sign in to the cloud. " +
+                    "Rebuild with backendBaseUrl set in app/.env."
+            )
+        }
         try {
             val request = Request.Builder()
                 .url(ApiConfig.endpoint(path))

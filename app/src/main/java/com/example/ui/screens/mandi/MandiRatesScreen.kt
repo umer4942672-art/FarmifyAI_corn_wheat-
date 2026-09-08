@@ -333,6 +333,23 @@ fun MandiRateCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Crop artwork so a farmer can find the right row by shape and
+                // colour instead of reading every name.
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(cropTint(rate.cropNameEn).copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CropArt(
+                        cropName = rate.cropNameEn,
+                        accent = cropTint(rate.cropNameEn),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -451,6 +468,133 @@ fun MandiRateCard(
                     fontSize = 11.sp,
                     color = TextMuted
                 )
+            }
+        }
+    }
+}
+
+
+/** Colour for each crop's artwork, so rows are distinguishable at a glance. */
+private fun cropTint(cropNameEn: String): Color = when {
+    cropNameEn.contains("wheat", true) -> Color(0xFFC79A2E)
+    cropNameEn.contains("rice", true) || cropNameEn.contains("paddy", true) -> Color(0xFF7B9E4C)
+    cropNameEn.contains("maize", true) || cropNameEn.contains("corn", true) -> Color(0xFFE0A21B)
+    cropNameEn.contains("cotton", true) -> Color(0xFF5C8AA8)
+    cropNameEn.contains("sugarcane", true) || cropNameEn.contains("cane", true) -> Color(0xFF3F8F5E)
+    cropNameEn.contains("potato", true) -> Color(0xFFA9793F)
+    cropNameEn.contains("tomato", true) -> Color(0xFFD1483C)
+    cropNameEn.contains("onion", true) -> Color(0xFFA85C8C)
+    else -> Color(0xFF4C8C55)
+}
+
+/**
+ * Simple crop illustrations drawn on a Canvas. Everything is a ratio of the
+ * available size, so no drawable assets are added to the APK and the art stays
+ * sharp at any density.
+ */
+@Composable
+private fun CropArt(cropName: String, accent: Color, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val s = this.size.minDimension
+        fun at(x: Float, y: Float) = androidx.compose.ui.geometry.Offset(s * x, s * y)
+        fun box(w: Float, h: Float) = androidx.compose.ui.geometry.Size(s * w, s * h)
+        val line = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = s * 0.07f,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            join = androidx.compose.ui.graphics.StrokeJoin.Round
+        )
+        val name = cropName.lowercase()
+
+        when {
+            name.contains("wheat") -> {
+                drawLine(accent, at(0.50f, 0.95f), at(0.50f, 0.30f), strokeWidth = s * 0.07f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                for (i in 0..3) {
+                    val y = 0.10f + i * 0.17f
+                    drawOval(accent, topLeft = at(0.24f, y), size = box(0.26f, 0.14f))
+                    drawOval(accent, topLeft = at(0.50f, y), size = box(0.26f, 0.14f))
+                }
+            }
+
+            name.contains("rice") || name.contains("paddy") -> {
+                for (i in 0..2) {
+                    val x = 0.22f + i * 0.28f
+                    drawLine(accent.copy(alpha = 0.8f), at(x, 0.94f), at(x, 0.42f),
+                        strokeWidth = s * 0.06f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    drawOval(accent, topLeft = at(x - 0.09f, 0.20f), size = box(0.18f, 0.26f))
+                }
+                drawLine(accent.copy(alpha = 0.45f), at(0.06f, 0.94f), at(0.94f, 0.94f),
+                    strokeWidth = s * 0.06f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+
+            name.contains("maize") || name.contains("corn") -> {
+                drawOval(accent.copy(alpha = 0.35f), topLeft = at(0.32f, 0.10f), size = box(0.36f, 0.72f))
+                drawOval(accent, topLeft = at(0.32f, 0.10f), size = box(0.36f, 0.72f), style = line)
+                for (i in 0..2) {
+                    drawLine(accent.copy(alpha = 0.7f), at(0.36f, 0.28f + i * 0.18f),
+                        at(0.64f, 0.28f + i * 0.18f), strokeWidth = s * 0.045f)
+                }
+                drawOval(accent.copy(alpha = 0.55f), topLeft = at(0.08f, 0.50f), size = box(0.26f, 0.34f))
+                drawOval(accent.copy(alpha = 0.55f), topLeft = at(0.66f, 0.50f), size = box(0.26f, 0.34f))
+            }
+
+            name.contains("cotton") -> {
+                drawCircle(accent.copy(alpha = 0.30f), radius = s * 0.19f, center = at(0.35f, 0.36f))
+                drawCircle(accent.copy(alpha = 0.30f), radius = s * 0.19f, center = at(0.65f, 0.36f))
+                drawCircle(accent.copy(alpha = 0.30f), radius = s * 0.21f, center = at(0.50f, 0.55f))
+                drawCircle(accent, radius = s * 0.19f, center = at(0.35f, 0.36f), style = line)
+                drawCircle(accent, radius = s * 0.19f, center = at(0.65f, 0.36f), style = line)
+                drawLine(accent, at(0.50f, 0.76f), at(0.50f, 0.95f), strokeWidth = s * 0.06f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+
+            name.contains("sugarcane") || name.contains("cane") -> {
+                for (i in 0..1) {
+                    val x = 0.34f + i * 0.28f
+                    drawLine(accent, at(x, 0.95f), at(x, 0.22f), strokeWidth = s * 0.11f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                    for (j in 0..2) {
+                        drawLine(Color.White.copy(alpha = 0.75f), at(x - 0.055f, 0.38f + j * 0.19f),
+                            at(x + 0.055f, 0.38f + j * 0.19f), strokeWidth = s * 0.035f)
+                    }
+                }
+                drawOval(accent.copy(alpha = 0.6f), topLeft = at(0.08f, 0.06f), size = box(0.34f, 0.16f))
+                drawOval(accent.copy(alpha = 0.6f), topLeft = at(0.58f, 0.06f), size = box(0.34f, 0.16f))
+            }
+
+            name.contains("potato") -> {
+                drawOval(accent.copy(alpha = 0.35f), topLeft = at(0.10f, 0.28f), size = box(0.58f, 0.44f))
+                drawOval(accent, topLeft = at(0.10f, 0.28f), size = box(0.58f, 0.44f), style = line)
+                drawCircle(accent, radius = s * 0.045f, center = at(0.28f, 0.44f))
+                drawCircle(accent, radius = s * 0.045f, center = at(0.48f, 0.58f))
+                drawOval(accent.copy(alpha = 0.5f), topLeft = at(0.58f, 0.48f), size = box(0.34f, 0.28f))
+            }
+
+            name.contains("tomato") -> {
+                drawCircle(accent.copy(alpha = 0.35f), radius = s * 0.32f, center = at(0.50f, 0.60f))
+                drawCircle(accent, radius = s * 0.32f, center = at(0.50f, 0.60f), style = line)
+                drawLine(Color(0xFF4C8C55), at(0.50f, 0.28f), at(0.50f, 0.10f), strokeWidth = s * 0.06f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawOval(Color(0xFF4C8C55), topLeft = at(0.24f, 0.16f), size = box(0.24f, 0.13f))
+                drawOval(Color(0xFF4C8C55), topLeft = at(0.52f, 0.16f), size = box(0.24f, 0.13f))
+            }
+
+            name.contains("onion") -> {
+                drawOval(accent.copy(alpha = 0.35f), topLeft = at(0.18f, 0.34f), size = box(0.64f, 0.58f))
+                drawOval(accent, topLeft = at(0.18f, 0.34f), size = box(0.64f, 0.58f), style = line)
+                drawLine(accent.copy(alpha = 0.6f), at(0.50f, 0.40f), at(0.50f, 0.88f), strokeWidth = s * 0.04f)
+                drawLine(accent, at(0.44f, 0.32f), at(0.36f, 0.08f), strokeWidth = s * 0.05f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawLine(accent, at(0.56f, 0.32f), at(0.66f, 0.10f), strokeWidth = s * 0.05f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+
+            else -> {
+                // Generic leafy crop for anything not listed above.
+                drawLine(accent, at(0.50f, 0.95f), at(0.50f, 0.36f), strokeWidth = s * 0.07f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                drawOval(accent.copy(alpha = 0.55f), topLeft = at(0.14f, 0.28f), size = box(0.36f, 0.22f))
+                drawOval(accent, topLeft = at(0.50f, 0.16f), size = box(0.36f, 0.22f))
             }
         }
     }

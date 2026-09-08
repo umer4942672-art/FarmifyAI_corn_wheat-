@@ -431,3 +431,264 @@ the quick actions were.
 The "Rabi 2026 / Wheat/Potato" badge was a flat grey-green box that read like a
 disabled button. Redrawn as a warm stamp: soft amber gradient, gold border, and
 `SeasonCropArt` — a wheat ear beside a potato — drawn on a Canvas.
+
+---
+
+# Eighth pass — batch 2
+
+## 27. White-on-white text (root cause, not just the two reports)
+
+The dosage-calculator input and the pathologist dialog were invisible because
+`FarmifyTheme` switched to `MidnightDarkScheme` whenever the *system* was in dark
+mode. Every screen in this app paints its own light surfaces as hardcoded colours
+(`SoftWhite`, `Color.White`, `PaleGreenBg`), so `onSurface` flipped to near-white
+while those backgrounds stayed white.
+
+The system dark-mode flag no longer switches the scheme. Dark mode remains
+available as an explicit choice — picking the Midnight theme in settings still
+works. Following the system properly would first require moving every hardcoded
+surface colour onto `MaterialTheme.colorScheme`, which is a larger change.
+
+Two specific fixes on top: the acres field now pins its own text, label, cursor
+and container colours instead of inheriting them, and the pathologist dialog sets
+`titleContentColor`, `textContentColor` and `iconContentColor`.
+
+## 28. Season badge shrunk
+
+The two-line amber card was still too heavy for a header. Now a single compact
+pill: 14dp crop art, the word "Rabi", nothing else.
+
+## 29. Smart Khata card recoloured
+
+Was a flat white card that disappeared into the page. Now a soft blue-to-white
+gradient with a blue gradient wallet icon — blue keeps the money section visually
+separate from the green crop cards around it.
+
+## 30. Mandi rates got crop artwork
+
+Each row now leads with a 46dp tinted tile containing artwork for that crop, so a
+farmer can find a row by shape and colour instead of reading every name. `CropArt`
+covers wheat, rice, maize, cotton, sugarcane, potato, tomato and onion, with a
+generic leafy fallback, and `cropTint` gives each its own colour. Drawn on a
+Canvas — no drawable assets added.
+
+## 31. Farmer profile photo
+
+`profilePhotoPath` added to `UserEntity` and `FarmerProfile`. Tapping the avatar
+in settings opens the picker; a camera badge marks it as tappable.
+
+`UserRepository.updateProfilePhoto()` copies the image into app-private storage
+and stores the path. The gallery `Uri` is deliberately not stored — that
+permission is revoked on restart, so a saved Uri would show a broken avatar the
+next day. Images are downscaled to 512px before saving, and the previous photo is
+deleted so files do not accumulate. `removeProfilePhoto()` reverts to the drawn
+avatar.
+
+New `FarmerAvatar` composable shows the photo when one exists and falls back to
+`FarmerUserVectorAvatar` otherwise. The dashboard and settings both use it, so a
+new photo appears in both places at once.
+
+### Database migration
+
+This is the first schema change, and the database had **no migrations and no
+fallback at all** — any schema change would have crashed existing installs on
+launch. Version moved 5 → 6 with `MIGRATION_5_6` adding the column to
+`user_profiles`, plus a destructive fallback as a safety net for databases from
+unreleased builds.
+
+---
+
+# Ninth pass — real dark mode, depth, header photo
+
+## 32. Two themes, and dark mode that actually works
+
+`AppThemeMode` had four entries; GOLDEN and EARTH were extra light palettes
+differing only in accent colour, which is not a decision a farmer needs to make.
+Reduced to **LIGHT** and **DARK**, and a theme toggle added to the settings
+Appearance section.
+
+Making dark mode usable needed real work. Screens reference `SoftWhite`,
+`TextPrimary`, `BorderLight` and friends by name in roughly three hundred places,
+all as top-level constants pinned to light values. Selecting a dark scheme
+previously left those surfaces white while text turned near-white.
+
+Rather than rewriting three hundred call sites, the constants became
+**composable getters backed by a `CompositionLocal`**:
+
+```kotlin
+val SoftWhite: Color
+    @Composable @ReadOnlyComposable get() = LocalFarmifySurfaces.current.softWhite
+```
+
+Call sites are untouched; the values now follow the active theme. The raw light
+values remain as `LightSoftWhite` and so on, because `Theme.kt` builds its
+`ColorScheme` outside a composable context.
+
+The system dark-mode flag is still ignored. Theme is an explicit choice, so a
+farmer who wants the light UI in bright sunlight keeps it regardless of the phone
+setting.
+
+## 33. Smart Khata card
+
+A white card with a blue tint was still not distinct enough. It is now the only
+card on the dashboard with a solid colour: a deep teal-to-indigo gradient, an
+amber wallet icon on a translucent tile, and a tinted drop shadow.
+
+Every colour inside was re-picked for a dark surface — muted teal for labels,
+white for headings, soft green and coral for profit and loss, translucent white
+for dividers and the breakdown strip. Reusing the light-theme values would have
+put dark text on a dark card.
+
+## 34. Quick action tiles read as physical tiles
+
+Each tile now carries a drop shadow tinted to its own accent colour, plus a faint
+top-down wash that gives the surface a lit edge. The weather and disease hero
+cards were lifted to matching elevation with tinted spot and ambient colours, so
+the dashboard has a consistent sense of depth rather than a mix of flat and raised
+cards.
+
+## 35. Profile photo in the header
+
+The dashboard greeting card was already switched to `FarmerAvatar`, but the
+shared `FarmifyTopAppBar` — the bar carrying the Assalam-o-Alaikum greeting — was
+still calling the drawn vector directly. It now takes a `profilePhotoPath` and
+`MainActivity` passes it through, so the farmer's own photo appears in both
+places. The bar's hardcoded white background also became theme-aware.
+
+---
+
+# Tenth pass — chat failures now name themselves
+
+## 36. "Temporarily unavailable" hid four different problems
+
+`getAgriAiResponse` treated a null from the backend call as one condition and
+always showed the same line. That single message covered:
+
+- no Supabase session on the device (the account exists only in Room)
+- `BACKEND_BASE_URL` empty in the build
+- the backend reachable but returning 401, 404, 503 or 504
+- no network at all
+
+`callCustomAgricultureApi` now returns a sealed `ChatOutcome` instead of a
+nullable string, and each failure carries its own bilingual explanation:
+
+| Condition | What the farmer sees |
+|---|---|
+| No backend URL compiled in | Rebuild with `backendBaseUrl` set |
+| No cloud session | Sign in again with your email |
+| Network unreachable | Check your connection |
+| `401` | Session expired, sign in again |
+| `404` | Chat endpoint missing — redeploy the backend |
+| `503` | AI not configured on the server — check `GEMINI_API_KEY` |
+| `504` | AI took too long — ask something shorter |
+| Empty answer | Rephrase the question |
+
+The most common cause is the second one. Chat, ledger sync and profile sync are
+all authenticated endpoints, so an account that never obtained a Supabase session
+fails at all three while offline features keep working — which makes them look
+like separate bugs.
+
+---
+
+# Eleventh pass — a build problem was reporting itself as bad credentials
+
+Diagnosis of a live failure: the backend, the Supabase account, the password and
+the token issue all verified fine over curl, while the same credentials failed
+inside the app. The APK had been built with an empty `BACKEND_BASE_URL`.
+
+## 37. The empty-URL case was indistinguishable from a network outage
+
+`ApiConfig.endpoint()` throws when no URL is compiled in. That throw happened
+*inside* `SupabaseAuthService.post()`'s try block, so it was caught and turned
+into `"Backend connection failed: ..."` — the exact string `UserRepository` uses
+to decide the server is temporarily down and the offline path should be taken.
+
+The user was then logged in locally, and every cloud feature failed for the rest
+of the session. A wrong password and a missing build configuration produced
+identical symptoms.
+
+Three changes:
+
+- `post()` checks `ApiConfig.isConfigured` **before** the try block and returns a
+  message naming the real problem.
+- `UserRepository` requires `ApiConfig.isConfigured` before treating a failure as
+  a network outage, in both login and signup. A misconfigured build now fails
+  loudly instead of degrading into offline mode.
+- `app/build.gradle.kts` falls back to the known production URL when neither
+  `-PbackendBaseUrl` nor `app/.env` yields one, so an unreadable or mis-encoded
+  `.env` cannot produce an empty URL. Both overrides still take priority.
+
+## 38. Backend status visible in the app
+
+Settings → About now shows the compiled backend URL with an OK or MISSING badge.
+Answering "does this APK have a backend URL?" previously meant scrolling Gradle
+output; it is now one screen away on the device.
+
+---
+
+# Twelfth pass — a status code that pointed at the wrong thing
+
+`POST /api/chat` returned 503 for two unrelated conditions: `GEMINI_API_KEY`
+genuinely missing, and a catch-all around `chatbot.answer()` that swallowed every
+runtime failure — a rejected key, a quota limit, a timeout, a Supabase read error.
+
+The Android client mapped every 503 to "The AI service is not configured. Check
+GEMINI_API_KEY", which sent the user to verify configuration that `/health` had
+already reported as correct.
+
+## 39. Upstream failures are now 502
+
+The catch-all raises 502 with the underlying error text. 503 is reserved for
+"Supabase or Gemini is not configured", which is what it actually means.
+
+## 40. The client stops guessing
+
+For 502 and 503 the client shows the server's own `detail` instead of a
+hardcoded sentence. Attaching one presumed cause to a status code that carries
+several is worse than showing the raw message.
+
+---
+
+# Thirteenth pass — Gemini key sent the wrong way
+
+Google has migrated Gemini from `AIza` "traffic keys" to `AQ.` "authentication
+keys", and AI Studio now issues only the new format. The new keys work on the
+native `generativelanguage.googleapis.com` endpoint that this backend uses.
+
+## 41. Key moved from the query string to a header
+
+`GeminiService.chat()` appended the key as `?key=...`. It now goes in the
+`x-goog-api-key` header, which is the documented way to pass either key format.
+
+This also keeps the key out of the URL, where it would otherwise appear in proxy
+logs, access logs and error traces.
+
+---
+
+# Fourteenth pass — Smart Khata card, third attempt
+
+## 42. Text was unreadable on the dark card
+
+The deep teal card from pass 33 was the wrong call. Making one card dark meant
+hand-picking a replacement colour for every label inside it, and anything missed
+stayed a light-theme colour on a dark surface. It also broke again under the dark
+theme added in pass 32, where the surrounding page went dark too and the card
+stopped standing out at all.
+
+Rebuilt as a **tinted light card**, with the tint pulled from the app's own
+emerald family so it matches the rest of the dashboard:
+
+- Light theme: mint-to-white gradient (`#F1FBF4 → #DFF3E6 → #F6FCF8`)
+- Dark theme: deep green gradient (`#162A22 → #1B3A2C`)
+
+The gradient is chosen from `LocalFarmifySurfaces.current.isDark`, so it follows
+the theme instead of being pinned to one.
+
+Every label inside went back to the palette getters — `TextPrimary`,
+`TextSecondary`, `SuccessGreen`, `ErrorRed`, `BorderLight`. Contrast is now
+guaranteed in both themes by construction rather than by remembering to override
+each colour.
+
+The card still reads as its own section: an emerald-tinted background, an emerald
+border, an emerald-tinted shadow, and a solid emerald-to-forest wallet tile with a
+white glyph.

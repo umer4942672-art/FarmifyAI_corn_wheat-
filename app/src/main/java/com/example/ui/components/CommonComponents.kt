@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +40,8 @@ fun FarmifyTopAppBar(
     onLanguageToggle: () -> Unit,
     onProfileClick: () -> Unit,
     onNotificationsClick: (() -> Unit)? = null,
+    /** Farmer's own photo; empty falls back to the drawn avatar. */
+    profilePhotoPath: String = "",
     modifier: Modifier = Modifier
 ) {
     val langState = LocalAppLanguage.current
@@ -47,7 +50,7 @@ fun FarmifyTopAppBar(
         modifier = modifier
             .fillMaxWidth()
             .testTag("farmify_top_app_bar"),
-        color = Color.White.copy(alpha = 0.85f),
+        color = SoftWhite.copy(alpha = 0.92f),
         shadowElevation = 1.dp
     ) {
         Column(
@@ -61,12 +64,13 @@ fun FarmifyTopAppBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Farmer Vector Avatar + Assalam-o-Alaikum Greeting
+                // Farmer photo (or drawn avatar) + Assalam-o-Alaikum greeting
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    FarmerUserVectorAvatar(
+                    FarmerAvatar(
+                        photoPath = profilePhotoPath,
                         size = 46.dp,
                         showTickMark = true,
                         onClick = onProfileClick
@@ -325,6 +329,66 @@ fun OfflineStatusPill(
 /**
  * Scalable Vector Image of Farmer Profile with optional Green Verified Checkmark
  */
+/**
+ * Shows the farmer's own photo when they have set one, and falls back to the
+ * drawn avatar otherwise. Every screen uses this rather than the vector
+ * directly, so a newly picked photo appears everywhere at once.
+ */
+@Composable
+fun FarmerAvatar(
+    photoPath: String,
+    modifier: Modifier = Modifier,
+    size: Dp = 52.dp,
+    showTickMark: Boolean = false,
+    onClick: (() -> Unit)? = null
+) {
+    val hasPhoto = photoPath.isNotBlank() && remember(photoPath) { java.io.File(photoPath).exists() }
+
+    if (!hasPhoto) {
+        FarmerUserVectorAvatar(
+            modifier = modifier,
+            size = size,
+            showTickMark = showTickMark,
+            onClick = onClick
+        )
+        return
+    }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        contentAlignment = Alignment.BottomEnd
+    ) {
+        coil.compose.AsyncImage(
+            model = java.io.File(photoPath),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .border(2.dp, EmeraldGreen, CircleShape)
+        )
+        if (showTickMark) {
+            Box(
+                modifier = Modifier
+                    .size(size * 0.30f)
+                    .clip(CircleShape)
+                    .background(SuccessGreen)
+                    .border(1.5.dp, Color.White, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(size * 0.18f)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun FarmerUserVectorAvatar(
     modifier: Modifier = Modifier,

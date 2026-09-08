@@ -37,7 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.MandiRate
 import com.example.data.model.MandiTrend
 import com.example.ui.components.CurrencyText
-import com.example.ui.components.FarmerUserVectorAvatar
+import com.example.ui.components.FarmerAvatar
 import com.example.ui.components.SectionHeader
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
@@ -121,8 +121,9 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
                     ) {
-                        // Farmer Vector Avatar
-                        FarmerUserVectorAvatar(
+                        // Farmer photo when set, drawn avatar otherwise
+                        FarmerAvatar(
+                            photoPath = userProfile.profilePhotoPath,
                             size = 50.dp,
                             showTickMark = false
                         )
@@ -170,46 +171,29 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Season badge. It was a plain grey-green box that read like a
-                    // disabled button; now it looks like a stamp with the season's
-                    // own crop art, so it reads as information rather than an action.
+                    // Compact season pill. The two-line card was too heavy for a
+                    // header badge, so it is now a single chip.
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color.Transparent,
-                        modifier = Modifier.shadow(2.dp, RoundedCornerShape(14.dp), spotColor = Color(0x33F9A825))
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0xFFFFF4D6),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEBCF8B))
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFFFFF6DC), Color(0xFFFDE9B8))
-                                    )
-                                )
-                                .border(1.dp, Color(0xFFE9C46A), RoundedCornerShape(14.dp))
-                                .padding(horizontal = 10.dp, vertical = 7.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                SeasonCropArt(
-                                    accent = Color(0xFFB07D18),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(modifier = Modifier.width(7.dp))
-                                Column {
-                                    Text(
-                                        text = if (langState.isUrdu) "ربیع سیزن" else "Rabi season",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF7A5510),
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = if (langState.isUrdu) "گندم و آلو · ۲۰۲۶" else "Wheat & potato · 2026",
-                                        fontSize = 9.sp,
-                                        color = Color(0xFF9C7526),
-                                        maxLines = 1
-                                    )
-                                }
-                            }
+                            SeasonCropArt(
+                                accent = Color(0xFFB07D18),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (langState.isUrdu) "ربیع" else "Rabi",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF7A5510),
+                                maxLines = 1
+                            )
                         }
                     }
                 }
@@ -224,7 +208,12 @@ fun DashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .shadow(4.dp, shape = RoundedCornerShape(26.dp), spotColor = Color(0x331B5E20))
+                    .shadow(
+                        elevation = 10.dp,
+                        shape = RoundedCornerShape(26.dp),
+                        spotColor = Color(0x4D0B5A6B),
+                        ambientColor = Color(0x260B5A6B)
+                    )
                     .testTag("dashboard_weather_hero_card"),
                 shape = RoundedCornerShape(26.dp),
                 color = Color.Transparent
@@ -382,12 +371,39 @@ fun DashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .shadow(2.dp, shape = RoundedCornerShape(24.dp)),
+                    .shadow(
+                        elevation = 10.dp,
+                        shape = RoundedCornerShape(24.dp),
+                        spotColor = EmeraldGreen.copy(alpha = 0.30f),
+                        ambientColor = EmeraldGreen.copy(alpha = 0.14f)
+                    ),
                 shape = RoundedCornerShape(24.dp),
-                color = SoftWhite,
-                border = androidx.compose.foundation.BorderStroke(1.dp, BorderSlate)
+                color = Color.Transparent,
+                border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.28f))
             ) {
-                Column(modifier = Modifier.padding(18.dp)) {
+                // The previous deep-teal card had readability problems: several
+                // labels were still using light-theme colours on a dark surface.
+                // This version keeps the card tinted and distinct, but the tint is
+                // light enough that the normal text colours stay legible, and both
+                // gradients come from the active palette so dark mode works too.
+                val darkTheme = LocalFarmifySurfaces.current.isDark
+                Column(
+                    modifier = Modifier
+                        .background(
+                            Brush.linearGradient(
+                                if (darkTheme) listOf(
+                                    Color(0xFF162A22),
+                                    Color(0xFF1B3A2C),
+                                    Color(0xFF162A22)
+                                ) else listOf(
+                                    Color(0xFFF1FBF4),
+                                    Color(0xFFDFF3E6),
+                                    Color(0xFFF6FCF8)
+                                )
+                            )
+                        )
+                        .padding(18.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -396,15 +412,19 @@ fun DashboardScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(BadgeOrangeBg),
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(EmeraldGreen, ForestGreen)
+                                        )
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.AccountBalanceWallet,
                                     contentDescription = null,
-                                    tint = AmberOrange,
+                                    tint = Color.White,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -455,13 +475,13 @@ fun DashboardScreen(
 
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = if (khataStats.netProfit >= 0) BadgeGreenBg else BadgeRedBg
+                            color = if (khataStats.netProfit >= 0) SuccessGreen.copy(alpha = 0.16f) else ErrorRed.copy(alpha = 0.16f)
                         ) {
                             Text(
                                 text = if (khataStats.netProfit >= 0) "منافع بخش (Profitable)" else "خسارہ (Loss)",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (khataStats.netProfit >= 0) SuccessGreen else ErrorRed,
+                                color = if (khataStats.netProfit >= 0) ForestGreen else ErrorRed,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
@@ -474,7 +494,7 @@ fun DashboardScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(PaleGreenBg)
+                            .background(SoftWhite.copy(alpha = 0.75f))
                             .padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -537,7 +557,12 @@ fun DashboardScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
-                    .shadow(3.dp, shape = RoundedCornerShape(26.dp), spotColor = Color(0x331B5E20))
+                    .shadow(
+                        elevation = 10.dp,
+                        shape = RoundedCornerShape(26.dp),
+                        spotColor = Color(0x4D1B5E20),
+                        ambientColor = Color(0x261B5E20)
+                    )
                     .testTag("dashboard_disease_ai_card"),
                 shape = RoundedCornerShape(26.dp),
                 color = Color.Transparent
@@ -983,12 +1008,28 @@ private fun QuickActionTile(
         shape = RoundedCornerShape(18.dp),
         color = SoftWhite,
         border = androidx.compose.foundation.BorderStroke(1.dp, BorderSlate),
-        shadowElevation = 2.dp,
-        modifier = modifier.height(112.dp).testTag("quick_tile_${title.take(5)}")
+        modifier = modifier
+            .height(112.dp)
+            // A coloured drop shadow tinted to the tile's own accent, so each one
+            // sits on the page like a physical tile instead of a flat rectangle.
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(18.dp),
+                spotColor = accentColor.copy(alpha = 0.45f),
+                ambientColor = accentColor.copy(alpha = 0.18f)
+            )
+            .testTag("quick_tile_${title.take(5)}")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // A faint top-down wash gives the surface a lit edge, which reads as
+                // depth alongside the shadow.
+                .background(
+                    Brush.verticalGradient(
+                        listOf(accentColor.copy(alpha = 0.07f), Color.Transparent)
+                    )
+                )
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {

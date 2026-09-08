@@ -39,14 +39,19 @@ android {
         ?.trim('"', '\'')
         ?.takeIf { it.isNotBlank() && !it.contains("your-project") && !it.contains("your-backend") }
 
+    // Last-resort default. An unreadable or mis-encoded app/.env previously produced
+    // an empty URL, and the app then failed every cloud call while reporting it as
+    // bad credentials. -PbackendBaseUrl and app/.env both still override this.
+    val defaultBackendUrl = "https://farmify-ai-corn-wheat-obxn.vercel.app"
+
     val backendBaseUrl = providers.gradleProperty("backendBaseUrl").orNull?.trim()?.takeIf { it.isNotBlank() }
       ?: readEnvValue(".env", "backendBaseUrl")
-      ?: ""
+      ?: defaultBackendUrl
 
     if (backendBaseUrl.isBlank() || !backendBaseUrl.startsWith("https://")) {
       logger.warn(
-        "FarmifyAI: backendBaseUrl is not set to an https:// URL. " +
-          "The app will build but every cloud feature (auth, sync, chat, mandi) will be disabled. " +
+        "FarmifyAI: backendBaseUrl is not a valid https:// URL. " +
+          "Every cloud feature (auth, sync, chat) will be disabled. " +
           "Set it in app/.env or pass -PbackendBaseUrl=https://your-backend"
       )
     } else {

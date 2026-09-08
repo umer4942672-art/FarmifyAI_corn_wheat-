@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.data.model.ChatMessage
 import com.example.data.model.MessageSender
 import com.example.data.remote.ApiConfig
+import com.example.data.remote.AuthSessionStore
 import com.example.data.remote.AuthorizedApiClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,6 +23,7 @@ import java.util.Locale
  */
 class KisanChatRepository(context: Context, private val mandiRepository: MandiRepository) {
     private val api = AuthorizedApiClient(context.applicationContext)
+    private val session = AuthSessionStore(context.applicationContext)
 
     suspend fun getAgriAiResponse(
         userQuery: String,
@@ -30,11 +32,14 @@ class KisanChatRepository(context: Context, private val mandiRepository: MandiRe
     ): ChatMessage = withContext(Dispatchers.IO) {
         if (isMandiQuery(userQuery)) return@withContext getLiveMandiResponse(isUrdu)
 
-        val answer = callCustomAgricultureApi(userQuery, chatHistory, isUrdu)
+        val outcome = callCustomAgricultureApi(userQuery, chatHistory, isUrdu)
+        val answer = (outcome as? ChatOutcome.Answer)?.text
             ?: return@withContext ChatMessage(
                 sender = MessageSender.AI_ASSISTANT,
-                textEn = if (isUrdu) "" else "The custom agriculture assistant is temporarily unavailable. Please try again when the server is online.",
-                textUr = if (isUrdu) "کسٹم زرعی اسسٹنٹ عارضی طور پر دستیاب نہیں ہے۔ سرور آن ہونے پر دوبارہ کوشش کریں۔" else null,
+                // "Temporarily unavailable" covered four unrelated causes and told the
+                // farmer nothing actionable. Each one now names itself.
+                textEn = if (isUrdu) "" else (outcome as ChatOutcome.Failure).messageEn,
+                textUr = if (isUrdu) (outcome as ChatOutcome.Failure).messageUr else null,
                 suggestedActions = getSuggestedFollowUps(userQuery, isUrdu),
                 isError = true
             )
@@ -86,18 +91,34 @@ class KisanChatRepository(context: Context, private val mandiRepository: MandiRe
         )
     }
 
+    /** Either an answer, or a failure that can explain itself to the farmer. */
+    private sealed interface ChatOutcome {
+        data class Answer(val text: String) : ChatOutcome
+        data class Failure(val messageEn: String, val messageUr: String) : ChatOutcome
+    }
+
     /**
      * Posts the question to the backend chatbot.
      * Routed through AuthorizedApiClient so an expired Supabase access token is
-     * refreshed and the request retried, instead of the farmer seeing a generic
-     * "assistant unavailable" message an hour after logging in.
+     * refreshed and the request retried.
      */
     private suspend fun callCustomAgricultureApi(
         userQuery: String,
         chatHistory: List<ChatMessage>,
         isUrdu: Boolean
-    ): String? {
-        if (!ApiConfig.isConfigured) return null
+    ): ChatOutcome {
+        if (!ApiConfig.isConfigured) {
+            return ChatOutcome.Failure(
+                "The app was built without a backend URL, so the assistant cannot be reached. Rebuild with backendBaseUrl set.",
+                "ایپ میں سرور کا پتہ سیٹ نہیں ہوا، اس لیے اسسٹنٹ سے رابطہ نہیں ہو سکتا۔"
+            )
+        }
+        if (!session.hasSession()) {
+            return ChatOutcome.Failure(
+                "You are signed in on this device only. Sign in again with your email so the assistant can reach the server.",
+                "آپ صرف اس فون پر سائن اِن ہیں۔ اسسٹنٹ چلانے کے لیے ای میل سے دوبارہ سائن اِن کریں۔"
+            )
+        }
 
         val history = JSONArray()
         chatHistory.takeLast(6).forEach { msg ->
@@ -123,10 +144,40 @@ class KisanChatRepository(context: Context, private val mandiRepository: MandiRe
                 .header("Accept", "application/json")
                 .post(body.toRequestBody(AuthorizedApiClient.JSON))
                 .build()
-        } ?: return null
+        } ?: return ChatOutcome.Failure(
+            "Could not reach the server. Check your internet connection and try again.",
+            "سرور تک رسائی نہیں ہو سکی۔ انٹرنیٹ چیک کر کے دوبارہ کوشش کریں۔"
+        )
 
-        if (!response.isSuccessful) return null
-        return response.json().optString("answer").ifBlank { null }
+        if (!response.isSuccessful) {
+            val detail = response.errorDetail("Server error ${response.code}")
+            return ChatOutcome.Failure(
+                when (response.code) {
+                    401 -> "Your session has expired. Please sign in again."
+                    404 -> "The chat endpoint is missing on the server. Redeploy the backend."
+                    // 503 means genuinely unconfigured, 502 means the key exists but the
+                    // upstream call failed. Both carry the server's own detail, because
+                    // guessing a single cause for a status code sent me chasing a key
+                    // that was already set.
+                    502, 503 -> detail
+                    504 -> "The AI took too long to answer. Try a shorter question."
+                    else -> detail
+                },
+                when (response.code) {
+                    401 -> "آپ کا سیشن ختم ہو گیا ہے۔ دوبارہ سائن اِن کریں۔"
+                    404 -> "سرور پر چیٹ کی سہولت موجود نہیں۔ بیک اینڈ دوبارہ ڈیپلائے کریں۔"
+                    504 -> "AI نے جواب دینے میں بہت وقت لیا۔ مختصر سوال کریں۔"
+                    else -> "سرور کی خرابی: $detail"
+                }
+            )
+        }
+
+        val answer = response.json().optString("answer").takeIf { it.isNotBlank() }
+            ?: return ChatOutcome.Failure(
+                "The server replied but the answer was empty. Try rephrasing the question.",
+                "سرور نے جواب دیا مگر وہ خالی تھا۔ سوال دوبارہ لکھ کر کوشش کریں۔"
+            )
+        return ChatOutcome.Answer(answer)
     }
 
     private fun getSuggestedFollowUps(query: String, isUrdu: Boolean): List<String> {

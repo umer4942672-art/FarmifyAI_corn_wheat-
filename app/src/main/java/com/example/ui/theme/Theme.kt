@@ -9,7 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-val LocalAppTheme = staticCompositionLocalOf { AppThemeMode.EMERALD }
+val LocalAppTheme = staticCompositionLocalOf { AppThemeMode.LIGHT }
 
 // 1. Emerald Lush (Default Green)
 private val EmeraldLightScheme = lightColorScheme(
@@ -23,62 +23,20 @@ private val EmeraldLightScheme = lightColorScheme(
     onSecondaryContainer = Color(0xFF5D4037),
     tertiary = LightEmerald,
     onTertiary = Color.White,
-    background = PaleGreenBg,
-    onBackground = TextPrimary,
-    surface = SoftWhite,
-    onSurface = TextPrimary,
-    surfaceVariant = SurfaceVariant,
-    onSurfaceVariant = TextSecondary,
+    background = LightPaleGreenBg,
+    onBackground = LightTextPrimary,
+    surface = LightSoftWhite,
+    onSurface = LightTextPrimary,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = LightTextSecondary,
     error = ErrorRed,
     onError = Color.White,
-    outline = BorderLight
+    outline = LightBorderLight
 )
 
 // 2. Golden Harvest (Wheat / Amber)
-private val GoldenLightScheme = lightColorScheme(
-    primary = GoldenHarvestPrimary,
-    onPrimary = Color.White,
-    primaryContainer = GoldenHarvestVariant,
-    onPrimaryContainer = Color(0xFF451A03),
-    secondary = GoldenYellow,
-    onSecondary = Color(0xFF451A03),
-    secondaryContainer = Color(0xFFFEF3C7),
-    onSecondaryContainer = Color(0xFF78350F),
-    tertiary = AmberOrange,
-    onTertiary = Color.White,
-    background = GoldenHarvestBg,
-    onBackground = Color(0xFF292524),
-    surface = GoldenHarvestSurface,
-    onSurface = Color(0xFF292524),
-    surfaceVariant = GoldenHarvestVariant,
-    onSurfaceVariant = Color(0xFF78716C),
-    error = ErrorRed,
-    onError = Color.White,
-    outline = Color(0xFFFDE68A)
-)
 
 // 3. Fertile Earth (Terracotta & Clay)
-private val EarthLightScheme = lightColorScheme(
-    primary = FertileEarthPrimary,
-    onPrimary = Color.White,
-    primaryContainer = FertileEarthVariant,
-    onPrimaryContainer = Color(0xFF3E1F16),
-    secondary = WarmClay,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFF5EBE6),
-    onSecondaryContainer = Color(0xFF4A281E),
-    tertiary = EarthBrown,
-    onTertiary = Color.White,
-    background = FertileEarthBg,
-    onBackground = Color(0xFF2C1810),
-    surface = FertileEarthSurface,
-    onSurface = Color(0xFF2C1810),
-    surfaceVariant = FertileEarthVariant,
-    onSurfaceVariant = Color(0xFF795548),
-    error = ErrorRed,
-    onError = Color.White,
-    outline = Color(0xFFE0D0C5)
-)
 
 // 4. Midnight Dark Mode
 private val MidnightDarkScheme = darkColorScheme(
@@ -104,20 +62,23 @@ private val MidnightDarkScheme = darkColorScheme(
 )
 
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun FarmifyTheme(
-    themeMode: AppThemeMode = AppThemeMode.EMERALD,
+    themeMode: AppThemeMode = AppThemeMode.LIGHT,
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        themeMode == AppThemeMode.MIDNIGHT -> MidnightDarkScheme
-        darkTheme -> MidnightDarkScheme
-        themeMode == AppThemeMode.GOLDEN -> GoldenLightScheme
-        themeMode == AppThemeMode.EARTH -> EarthLightScheme
-        else -> EmeraldLightScheme
-    }
+    // The system dark-mode flag is deliberately ignored. Theme is an explicit
+    // choice in settings, so a farmer who wants the light UI outdoors keeps it
+    // regardless of what the phone is set to.
+    val isDark = themeMode == AppThemeMode.DARK
+    val colorScheme = if (isDark) MidnightDarkScheme else EmeraldLightScheme
+    val surfaces = if (isDark) DarkSurfacePalette else LightSurfacePalette
 
-    CompositionLocalProvider(LocalAppTheme provides themeMode) {
+    CompositionLocalProvider(
+        LocalAppTheme provides themeMode,
+        LocalFarmifySurfaces provides surfaces
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
@@ -128,7 +89,7 @@ fun FarmifyTheme(
 
 @Composable
 fun MyApplicationTheme(
-    themeMode: AppThemeMode = AppThemeMode.EMERALD,
+    themeMode: AppThemeMode = AppThemeMode.LIGHT,
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit

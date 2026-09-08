@@ -22,9 +22,17 @@ class GeminiService:
                 "maxOutputTokens": settings.gemini_max_output_tokens,
             },
         }
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent?key={settings.gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
+        # The key goes in the x-goog-api-key header, not the ?key= query string.
+        # Google has migrated from AIza "traffic keys" to AQ. "authentication keys",
+        # and the header is the documented way to pass either kind. It also keeps
+        # the key out of URLs, which end up in proxy and access logs.
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": settings.gemini_api_key,
+        }
         async with httpx.AsyncClient(timeout=settings.gemini_timeout_seconds) as client:
-            response = await client.post(url, json=payload)
+            response = await client.post(url, json=payload, headers=headers)
             if response.status_code >= 400:
                 raise RuntimeError(f"Gemini API {response.status_code}: {response.text[:500]}")
             data = response.json()

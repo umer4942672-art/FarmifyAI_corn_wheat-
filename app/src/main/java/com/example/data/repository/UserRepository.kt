@@ -1,9 +1,15 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import java.io.File
+import java.io.FileOutputStream
 import com.example.data.local.UserDao
 import com.example.data.local.UserEntity
 import com.example.data.local.PasswordHasher
+import com.example.data.remote.ApiConfig
 import com.example.data.remote.SupabaseAuthService
 import com.example.data.remote.SupabaseDataSyncService
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 
 data class FarmerProfile(
     val fullName: String = "Pakistani Kisan",
@@ -30,7 +37,9 @@ data class FarmerProfile(
     val weatherNotifications: Boolean = true,
     val mandiNotifications: Boolean = true,
     val diseaseAlerts: Boolean = true,
-    val khataReminders: Boolean = true
+    val khataReminders: Boolean = true,
+    /** Absolute path to the farmer's own photo. Empty means fall back to the drawn avatar. */
+    val profilePhotoPath: String = ""
 )
 
 class UserRepository(
@@ -39,6 +48,7 @@ class UserRepository(
     private val supabaseAuthService: SupabaseAuthService = SupabaseAuthService(context),
     private val supabaseDataSync: SupabaseDataSyncService = SupabaseDataSyncService(context)
 ) {
+    private val appContext = context.applicationContext
     private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _profile = MutableStateFlow(FarmerProfile(isAuthenticated = false))
     val profile: StateFlow<FarmerProfile> = _profile.asStateFlow()
@@ -113,9 +123,12 @@ class UserRepository(
 
         // 2. Offline fallback is allowed only when the backend itself is unreachable.
         // A real Supabase "invalid credentials" response must never be bypassed locally.
+        // Only a genuine network failure justifies the offline path. A build with
+        // no backend URL is a configuration error, and silently logging the user
+        // in offline hides it until nothing syncs.
         val backendUnavailable = cloudAuth.errorMessage?.startsWith(
             "Backend connection failed", ignoreCase = true
-        ) == true
+        ) == true && ApiConfig.isConfigured
         if (!backendUnavailable) {
             return Result.failure(
                 Exception(cloudAuth.errorMessage ?: "Authentication failed")
@@ -194,6 +207,68 @@ class UserRepository(
         return Result.success(profile)
     }
 
+    /**
+     * Copies the picked image into app-private storage and records its path.
+     *
+     * The gallery Uri itself is not stored: those permissions are revoked when the
+     * app restarts, so a saved Uri would show a broken avatar the next day.
+     */
+    suspend fun updateProfilePhoto(sourceUri: Uri): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val active = userDao.getActiveUserDirect()
+                ?: return@withContext Result.failure(Exception("No signed-in farmer"))
+
+            val photosDir = File(appContext.filesDir, "profile_photos").apply { mkdirs() }
+            val destination = File(photosDir, "profile_${System.currentTimeMillis()}.jpg")
+
+            appContext.contentResolver.openInputStream(sourceUri)?.use { input ->
+                val original = BitmapFactory.decodeStream(input)
+                    ?: return@withContext Result.failure(Exception("Could not read that image"))
+                // Downscale before saving; a full camera photo is far larger than a
+                // 200dp avatar ever needs and would sit in storage forever.
+                val scaled = scaleForAvatar(original)
+                FileOutputStream(destination).use { output ->
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 88, output)
+                }
+                if (scaled != original) original.recycle()
+            } ?: return@withContext Result.failure(Exception("Could not open that image"))
+
+            // Remove the previous photo so old files do not accumulate.
+            active.profilePhotoPath.takeIf { it.isNotBlank() }?.let { old ->
+                runCatching { File(old).delete() }
+            }
+
+            val updated = active.copy(profilePhotoPath = destination.absolutePath)
+            userDao.insertOrUpdateUser(updated)
+            _profile.value = updated.toModel(isAuthenticated = true)
+            Result.success(destination.absolutePath)
+        } catch (e: Exception) {
+            Result.failure(Exception(e.localizedMessage ?: "Could not save that photo"))
+        }
+    }
+
+    /** Reverts to the drawn avatar and deletes the stored file. */
+    suspend fun removeProfilePhoto() = withContext(Dispatchers.IO) {
+        val active = userDao.getActiveUserDirect() ?: return@withContext
+        active.profilePhotoPath.takeIf { it.isNotBlank() }?.let { runCatching { File(it).delete() } }
+        val updated = active.copy(profilePhotoPath = "")
+        userDao.insertOrUpdateUser(updated)
+        _profile.value = updated.toModel(isAuthenticated = true)
+    }
+
+    private fun scaleForAvatar(source: Bitmap): Bitmap {
+        val max = 512
+        val longest = maxOf(source.width, source.height)
+        if (longest <= max) return source
+        val ratio = max.toFloat() / longest
+        return Bitmap.createScaledBitmap(
+            source,
+            (source.width * ratio).toInt().coerceAtLeast(1),
+            (source.height * ratio).toInt().coerceAtLeast(1),
+            true
+        )
+    }
+
     /** Stable key used to scope local Room rows to the signed-in farmer. */
     fun currentUserKey(): String {
         val current = _profile.value
@@ -242,7 +317,8 @@ class UserRepository(
         )
         val cloudSignup = supabaseAuthService.signUp(email = cleanEmail.orEmpty(), phone = if (cleanEmail == null) normalizePhone(cleanPhone) else null, password = password, metadata = metaMap)
         if (!cloudSignup.isSuccess &&
-            cloudSignup.errorMessage?.startsWith("Backend connection failed", ignoreCase = true) != true) {
+            (cloudSignup.errorMessage?.startsWith("Backend connection failed", ignoreCase = true) != true ||
+                !ApiConfig.isConfigured)) {
             return Result.failure(Exception(cloudSignup.errorMessage ?: "Signup failed"))
         }
 
@@ -384,7 +460,8 @@ class UserRepository(
             weatherNotifications = this.weatherNotifications,
             mandiNotifications = this.mandiNotifications,
             diseaseAlerts = this.diseaseAlerts,
-            khataReminders = this.khataReminders
+            khataReminders = this.khataReminders,
+            profilePhotoPath = this.profilePhotoPath
         )
     }
 }

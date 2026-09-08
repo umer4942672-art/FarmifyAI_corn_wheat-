@@ -12,6 +12,8 @@ data class UserEntity(
     val email: String,
     val passwordHash: String,
     val supabaseUserId: String = "",
+    /** Absolute path to the farmer's own profile photo in app storage. Empty = use the drawn avatar. */
+    val profilePhotoPath: String = "",
     val farmName: String,
     val district: String,
     val province: String,

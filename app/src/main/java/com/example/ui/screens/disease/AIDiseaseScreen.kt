@@ -139,6 +139,9 @@ fun AIDiseaseScreen(
                 }
             },
             containerColor = SoftWhite,
+            titleContentColor = TextPrimary,
+            textContentColor = TextPrimary,
+            iconContentColor = EmeraldGreen,
             shape = RoundedCornerShape(20.dp)
         )
     }
@@ -969,10 +972,32 @@ fun DiagnosisResultView(
                         OutlinedTextField(
                             value = acresInput,
                             onValueChange = { acresInput = it },
-                            label = { Text(if (langState.isUrdu) "رقبہ (ایکڑ)" else "Field Acres") },
+                            label = {
+                                Text(
+                                    text = if (langState.isUrdu) "رقبہ (ایکڑ)" else "Field acres",
+                                    color = TextSecondary,
+                                    fontSize = 12.sp
+                                )
+                            },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            // This field sits on a hardcoded white box. Without explicit
+                            // colours it inherits the theme's onSurface, which is white in
+                            // dark mode, so the typed number was invisible.
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                disabledTextColor = TextSecondary,
+                                cursorColor = ForestGreen,
+                                focusedBorderColor = ForestGreen,
+                                unfocusedBorderColor = BorderSlate,
+                                focusedLabelColor = ForestGreen,
+                                unfocusedLabelColor = TextSecondary,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            ),
+                            modifier = Modifier.weight(1f)
                         )
 
                         Spacer(modifier = Modifier.width(10.dp))

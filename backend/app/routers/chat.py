@@ -38,4 +38,11 @@ async def chat(payload: ChatRequest, user: dict = Depends(require_user)) -> dict
         )
         return {"success": True, **result}
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Gemini agriculture chatbot unavailable: {exc}") from exc
+        # 502, not 503. A 503 here is indistinguishable from "GEMINI_API_KEY is not
+        # set", which sends people to check configuration that is already correct.
+        # This branch means the key exists but the upstream call failed — a rejected
+        # key, a quota limit, a timeout, or a Supabase read error.
+        raise HTTPException(
+            status_code=502,
+            detail=f"Agriculture chatbot upstream error: {exc}",
+        ) from exc

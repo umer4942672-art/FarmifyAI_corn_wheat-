@@ -2,7 +2,10 @@ package com.example.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.ui.components.FarmerUserVectorAvatar
+import com.example.ui.components.FarmerAvatar
 import com.example.ui.components.GlassCard
 import com.example.ui.components.OfflineStatusPill
 import com.example.ui.components.SectionHeader
@@ -46,6 +49,16 @@ fun SettingsScreen(
     val context = LocalContext.current
     val langState = LocalAppLanguage.current
     val profile by viewModel.userProfile.collectAsStateWithLifecycle()
+    val currentTheme by viewModel.currentTheme.collectAsStateWithLifecycle()
+
+    // Photo picker. The chosen image is copied into app storage by the repository;
+    // the gallery Uri itself is not stored because that permission is revoked on
+    // restart and the avatar would break the next day.
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) viewModel.updateProfilePhoto(uri)
+    }
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -80,11 +93,31 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
                     ) {
-                        FarmerUserVectorAvatar(
-                            size = 52.dp,
-                            showTickMark = true,
-                            onClick = { showEditProfileDialog = true }
-                        )
+                        Box(contentAlignment = Alignment.BottomEnd) {
+                            FarmerAvatar(
+                                photoPath = profile.profilePhotoPath,
+                                size = 56.dp,
+                                showTickMark = false,
+                                onClick = { photoPickerLauncher.launch("image/*") }
+                            )
+                            // Small camera badge so it is obvious the avatar is tappable.
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(EmeraldGreen)
+                                    .border(1.5.dp, Color.White, CircleShape)
+                                    .clickable { photoPickerLauncher.launch("image/*") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.PhotoCamera,
+                                    contentDescription = if (langState.isUrdu) "تصویر تبدیل کریں" else "Change photo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.width(12.dp))
 
@@ -183,6 +216,48 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            SectionHeader(
+                title = if (langState.isUrdu) "ایپ کی شکل" else "Appearance",
+                icon = Icons.Outlined.Palette
+            )
+
+            GlassCard {
+                Text(
+                    text = if (langState.isUrdu) "تھیم" else "Theme",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (langState.isUrdu) "دھوپ میں روشن، رات کو گہرا" else "Light for daylight, dark for night",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ThemeChoiceButton(
+                        label = if (langState.isUrdu) AppThemeMode.LIGHT.titleUr else AppThemeMode.LIGHT.titleEn,
+                        icon = Icons.Outlined.LightMode,
+                        selected = currentTheme == AppThemeMode.LIGHT,
+                        modifier = Modifier.weight(1f)
+                    ) { viewModel.setAppTheme(AppThemeMode.LIGHT) }
+
+                    ThemeChoiceButton(
+                        label = if (langState.isUrdu) AppThemeMode.DARK.titleUr else AppThemeMode.DARK.titleEn,
+                        icon = Icons.Outlined.DarkMode,
+                        selected = currentTheme == AppThemeMode.DARK,
+                        modifier = Modifier.weight(1f)
+                    ) { viewModel.setAppTheme(AppThemeMode.DARK) }
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
 
@@ -265,6 +340,46 @@ fun SettingsScreen(
             SectionHeader(title = str("about_app"), icon = Icons.Outlined.Info)
 
             GlassCard {
+                // Backend status, visible in the app. Diagnosing "invalid credentials"
+                // previously meant reading Gradle logs to find out whether the APK had
+                // a backend URL compiled in at all.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (langState.isUrdu) "سرور" else "Server",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = com.example.data.remote.ApiConfig.BASE_URL.ifBlank {
+                                if (langState.isUrdu) "سیٹ نہیں ہے" else "Not configured"
+                            },
+                            fontSize = 10.sp,
+                            color = TextSecondary,
+                            maxLines = 1
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (com.example.data.remote.ApiConfig.isConfigured)
+                            SuccessGreen.copy(alpha = 0.15f) else ErrorRed.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = if (com.example.data.remote.ApiConfig.isConfigured) "OK" else "MISSING",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (com.example.data.remote.ApiConfig.isConfigured) SuccessGreen else ErrorRed,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                HorizontalDivider(color = BorderLight, modifier = Modifier.padding(vertical = 10.dp))
+
                 Text(
                     text = "FarmifyAI v1.0.0",
                     fontWeight = FontWeight.Bold,
@@ -359,6 +474,48 @@ fun SettingsScreen(
                 showEditProfileDialog = false
             }
         )
+    }
+}
+
+/** Theme option: filled when active, outlined otherwise. */
+@Composable
+fun ThemeChoiceButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) EmeraldGreen else Color.Transparent,
+        border = androidx.compose.foundation.BorderStroke(
+            1.5.dp,
+            if (selected) EmeraldGreen else BorderLight
+        ),
+        modifier = modifier.height(46.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (selected) Color.White else TextSecondary,
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(modifier = Modifier.width(7.dp))
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                color = if (selected) Color.White else TextPrimary
+            )
+        }
     }
 }
 

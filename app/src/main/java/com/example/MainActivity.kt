@@ -130,7 +130,8 @@ fun FarmifyApp(
                     },
                     onProfileClick = {
                         navigateTo(Screen.Settings)
-                    }
+                    },
+                    profilePhotoPath = userProfile.profilePhotoPath
                 )
             }
         },

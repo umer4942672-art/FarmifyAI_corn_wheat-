@@ -63,7 +63,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val currentLanguage: StateFlow<AppLanguage> = _currentLanguage.asStateFlow()
 
     // App Theme State
-    private val _currentTheme = MutableStateFlow(AppThemeMode.EMERALD)
+    private val _currentTheme = MutableStateFlow(AppThemeMode.LIGHT)
     val currentTheme: StateFlow<AppThemeMode> = _currentTheme.asStateFlow()
 
     fun setAppTheme(theme: AppThemeMode) {
@@ -772,6 +772,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             userRepository.updateProfile(name, phone, farmName, farmLocation, acres)
             _userFeedback.emit("پروفائل اپ ڈیٹ ہو گئی! Profile updated successfully")
+        }
+    }
+
+    /** Copies a picked image into app storage and points the profile at it. */
+    fun updateProfilePhoto(uri: android.net.Uri) {
+        viewModelScope.launch {
+            val result = userRepository.updateProfilePhoto(uri)
+            if (result.isSuccess) {
+                _userFeedback.emit("تصویر لگ گئی (Profile photo updated)")
+            } else {
+                _userFeedback.emit(result.exceptionOrNull()?.message ?: "Could not save that photo")
+            }
+        }
+    }
+
+    /** Goes back to the drawn avatar. */
+    fun removeProfilePhoto() {
+        viewModelScope.launch {
+            userRepository.removeProfilePhoto()
+            _userFeedback.emit("تصویر ہٹا دی گئی (Photo removed)")
         }
     }
 
