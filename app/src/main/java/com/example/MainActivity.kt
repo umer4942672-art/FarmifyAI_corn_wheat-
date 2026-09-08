@@ -244,7 +244,10 @@ fun FarmifyApp(
                     Screen.Khata -> SmartKhataScreen(viewModel = viewModel)
                     Screen.Mandi -> MandiRatesScreen(viewModel = viewModel)
                     Screen.Weather -> WeatherForecastScreen(viewModel = viewModel)
-                    Screen.DiseaseScan -> AIDiseaseScreen(viewModel = viewModel)
+                    Screen.DiseaseScan -> AIDiseaseScreen(
+                        viewModel = viewModel,
+                        onNavigateToAdvisory = { navigateTo(Screen.KisanChat) }
+                    )
                     Screen.Settings -> SettingsScreen(
                         viewModel = viewModel,
                         onLogout = {

@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
+import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.example.data.model.*
 import kotlinx.coroutines.Dispatchers
@@ -13,13 +15,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private const val FIX_TIMEOUT_MILLIS = 12_000L
+private const val STALE_LOCATION_MILLIS = 10 * 60 * 1000L
 
 class WeatherRepository {
 
@@ -73,19 +80,24 @@ class WeatherRepository {
         }
 
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            ?: return@withContext false
-
-        val candidates = mutableListOf<Location>()
-        try {
-            locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let(candidates::add)
-        } catch (_: SecurityException) {
-        }
-        try {
-            locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)?.let(candidates::add)
-        } catch (_: SecurityException) {
+        if (locationManager == null) {
+            refreshWeather()
+            return@withContext false
         }
 
-        val best = candidates.maxByOrNull { it.time }
+        // Step 1: cached fix from every enabled provider, not just GPS and network.
+        // A phone that has been indoors often has nothing on GPS but something on
+        // the passive or fused provider.
+        var best = lastKnownLocation(locationManager)
+
+        // Step 2: nothing cached, so ask for a real fix. This was the missing piece —
+        // getLastKnownLocation() returns null whenever no app has requested a
+        // location recently, which is the normal state on a fresh install and on
+        // most emulators, so weather silently fell back to the saved district.
+        if (best == null) {
+            best = requestSingleFix(locationManager)
+        }
+
         if (best == null) {
             refreshWeather()
             return@withContext false
@@ -96,6 +108,80 @@ class WeatherRepository {
         fetchWeather(district)
         true
     }
+
+    private fun lastKnownLocation(locationManager: LocationManager): Location? {
+        val providers = try {
+            locationManager.getProviders(true)
+        } catch (_: Exception) {
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        }
+        val candidates = mutableListOf<Location>()
+        providers.forEach { provider ->
+            try {
+                locationManager.getLastKnownLocation(provider)?.let(candidates::add)
+            } catch (_: SecurityException) {
+            } catch (_: Exception) {
+            }
+        }
+        // Ignore stale fixes; an hour-old position can be a different district.
+        val cutoff = System.currentTimeMillis() - STALE_LOCATION_MILLIS
+        return candidates.filter { it.time >= cutoff }.maxByOrNull { it.time }
+            ?: candidates.maxByOrNull { it.time }
+    }
+
+    /** Waits up to [FIX_TIMEOUT_MILLIS] for one fresh position, then gives up. */
+    private suspend fun requestSingleFix(locationManager: LocationManager): Location? =
+        withTimeoutOrNull(FIX_TIMEOUT_MILLIS) {
+            suspendCancellableCoroutine<Location?> { continuation ->
+                val provider = when {
+                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                    locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+                    else -> null
+                }
+                if (provider == null) {
+                    // Location services are switched off entirely.
+                    continuation.resume(null) {}
+                    return@suspendCancellableCoroutine
+                }
+
+                val listener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        try { locationManager.removeUpdates(this) } catch (_: Exception) {}
+                        if (continuation.isActive) continuation.resume(location) {}
+                    }
+
+                    // Required on API levels below 30, where the default methods do not exist.
+                    override fun onProviderEnabled(provider: String) {}
+                    override fun onProviderDisabled(provider: String) {
+                        try { locationManager.removeUpdates(this) } catch (_: Exception) {}
+                        if (continuation.isActive) continuation.resume(null) {}
+                    }
+
+                    @Deprecated("Kept for API < 30 compatibility")
+                    override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                }
+
+                try {
+                    locationManager.requestLocationUpdates(
+                        provider,
+                        0L,
+                        0f,
+                        listener,
+                        Looper.getMainLooper()
+                    )
+                } catch (_: SecurityException) {
+                    if (continuation.isActive) continuation.resume(null) {}
+                    return@suspendCancellableCoroutine
+                } catch (_: Exception) {
+                    if (continuation.isActive) continuation.resume(null) {}
+                    return@suspendCancellableCoroutine
+                }
+
+                continuation.invokeOnCancellation {
+                    try { locationManager.removeUpdates(listener) } catch (_: Exception) {}
+                }
+            }
+        }
 
     private fun reverseGeocode(context: Context, latitude: Double, longitude: Double): FarmDistrict {
         var city = "Current Location"

@@ -55,7 +55,8 @@ import com.example.util.str
 @Composable
 fun AIDiseaseScreen(
     viewModel: MainViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNavigateToAdvisory: () -> Unit = {}
 ) {
     val langState = LocalAppLanguage.current
     val currentResult by viewModel.currentScanResult.collectAsStateWithLifecycle()
@@ -64,6 +65,83 @@ fun AIDiseaseScreen(
     val scanHistory by viewModel.scanHistory.collectAsStateWithLifecycle()
     val isSpeaking by viewModel.voiceHelper.isSpeaking.collectAsStateWithLifecycle()
     val selectedDiseaseCrop by viewModel.selectedDiseaseCrop.collectAsStateWithLifecycle()
+    var showPathologistSheet by remember { mutableStateOf(false) }
+
+    if (showPathologistSheet) {
+        val context = LocalContext.current
+        AlertDialog(
+            onDismissRequest = { showPathologistSheet = false },
+            icon = { Icon(Icons.Default.SupportAgent, contentDescription = null, tint = EmeraldGreen) },
+            title = {
+                Text(
+                    text = if (langState.isUrdu) "ماہرِ نباتات سے رابطہ" else "Contact a plant pathologist",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = if (langState.isUrdu)
+                            "ایپ کی تشخیص صرف رہنمائی کے لیے ہے۔ نقصان زیادہ ہو یا بیماری پھیل رہی ہو تو کھیت کا معائنہ ضروری ہے۔"
+                        else
+                            "The app's diagnosis is guidance only. If the damage is heavy or spreading, the field needs to be inspected in person.",
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    PathologistContactRow(
+                        label = if (langState.isUrdu) "محکمہ زراعت پنجاب ہیلپ لائن" else "Punjab Agriculture Helpline",
+                        value = "0800-15000"
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    PathologistContactRow(
+                        label = if (langState.isUrdu) "کسان دوست ہیلپ لائن" else "Kisan Dost Helpline",
+                        value = "0800-17000"
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = if (langState.isUrdu)
+                            "اپنے قریبی زرعی توسیعی افسر سے بھی رابطہ کیا جا سکتا ہے۔"
+                        else
+                            "Your local agriculture extension officer can also be reached at the tehsil office.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        lineHeight = 16.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPathologistSheet = false
+                        try {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_DIAL,
+                                    android.net.Uri.parse("tel:080015000")
+                                )
+                            )
+                        } catch (_: Exception) {
+                            // No dialer on this device; the numbers stay visible above.
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (langState.isUrdu) "کال کریں" else "Call now", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPathologistSheet = false }) {
+                    Text(if (langState.isUrdu) "بند کریں" else "Close", color = TextSecondary)
+                }
+            },
+            containerColor = SoftWhite,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 
     val context = LocalContext.current
     var activeTab by remember { mutableStateOf("SCAN") } // "SCAN", "ENCYCLOPEDIA", "HISTORY"
@@ -303,7 +381,15 @@ fun AIDiseaseScreen(
                         onReset = {
                             viewModel.voiceHelper.stop()
                             viewModel.resetScan()
-                        }
+                        },
+                        onAskAdvisory = { diagnosis ->
+                            viewModel.voiceHelper.stop()
+                            // Seed the chat with this diagnosis so the farmer does not
+                            // have to retype the disease name.
+                            viewModel.askAdvisoryAboutDiagnosis(diagnosis, langState.isUrdu)
+                            onNavigateToAdvisory()
+                        },
+                        onContactPathologist = { showPathologistSheet = true }
                     )
                 }
             } else {
@@ -640,7 +726,9 @@ fun DiagnosisResultView(
     isSpeaking: Boolean,
     onSpeak: (String) -> Unit,
     onSave: () -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    onAskAdvisory: (PlantDiseaseResult) -> Unit,
+    onContactPathologist: () -> Unit
 ) {
     val langState = LocalAppLanguage.current
 
@@ -815,37 +903,49 @@ fun DiagnosisResultView(
             backgroundColor = Color(0xFFF2F8F4),
             borderColor = EmeraldGreen
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Medication, contentDescription = null, tint = ForestGreen, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = str("chemical_cure"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ForestGreen)
-                }
-
-                TextButton(onClick = { showDosageCalculator = !showDosageCalculator }) {
-                    Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(16.dp), tint = ForestGreen)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (showDosageCalculator) (if (langState.isUrdu) "چھپائیں" else "Hide Calc") else (if (langState.isUrdu) "سپرے کیلکولیٹر" else "Dosage Calc"),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ForestGreen
-                    )
-                }
+            // Title and the calculator toggle used to share one SpaceBetween row.
+            // The Urdu calculator label is long, so it squeezed the heading and the
+            // whole card ended up looking cramped. The toggle now sits on its own
+            // line under the treatment text, at full width.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Medication, contentDescription = null, tint = ForestGreen, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = str("chemical_cure"),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = ForestGreen
+                )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = if (langState.isUrdu) result.chemicalTreatmentUr else result.chemicalTreatmentEn,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 color = TextPrimary,
-                lineHeight = 19.sp
+                lineHeight = 20.sp
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = { showDosageCalculator = !showDosageCalculator },
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, ForestGreen),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = ForestGreen),
+                contentPadding = PaddingValues(horizontal = 10.dp),
+                modifier = Modifier.fillMaxWidth().height(42.dp)
+            ) {
+                Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (showDosageCalculator) (if (langState.isUrdu) "کیلکولیٹر چھپائیں" else "Hide dosage calculator")
+                           else (if (langState.isUrdu) "سپرے کیلکولیٹر کھولیں" else "Open dosage calculator"),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+            }
 
             // Spray Dosage Calculator Section
             AnimatedVisibility(visible = showDosageCalculator) {
@@ -939,7 +1039,71 @@ fun DiagnosisResultView(
             )
         }
 
-        // Action Buttons: Save & Scan Another
+        // Ask the advisory chatbot about this exact diagnosis.
+        Button(
+            onClick = { onAskAdvisory(result) },
+            colors = ButtonDefaults.buttonColors(containerColor = ForestGreen),
+            shape = RoundedCornerShape(12.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .testTag("ai_ask_advisory_btn")
+        ) {
+            Icon(Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.Start) {
+                Text(
+                    text = if (langState.isUrdu) "AI مشورہ لیں" else "Ask AI advisory",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1
+                )
+                Text(
+                    text = if (langState.isUrdu) "اسی بیماری پر مزید معلومات" else "More about this disease",
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // A model prediction is not a diagnosis. Anything severe should reach a
+        // real plant pathologist, so the route to one is on the result screen.
+        OutlinedButton(
+            onClick = onContactPathologist,
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, EmeraldGreen),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .testTag("ai_contact_pathologist_btn")
+        ) {
+            Icon(Icons.Default.SupportAgent, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.Start) {
+                Text(
+                    text = if (langState.isUrdu) "ماہرِ نباتات سے رابطہ" else "Contact a pathologist",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1
+                )
+                Text(
+                    text = if (langState.isUrdu) "محکمہ زراعت کی ہیلپ لائن" else "Agriculture department helpline",
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    color = TextSecondary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Both actions get the same fixed height so neither looks like the odd one out.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -948,31 +1112,37 @@ fun DiagnosisResultView(
                 onClick = onSave,
                 colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
                 shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp),
                 modifier = Modifier
                     .weight(1f)
+                    .height(48.dp)
                     .testTag("ai_save_result_btn")
             ) {
                 Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(text = str("save_to_history"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(text = str("save_to_history"), fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
             }
 
             OutlinedButton(
                 onClick = onReset,
                 shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, SuccessGreen),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = SuccessGreen),
+                contentPadding = PaddingValues(horizontal = 8.dp),
                 modifier = Modifier
                     .weight(1f)
+                    .height(48.dp)
                     .testTag("ai_scan_another_btn")
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(text = str("scan_another"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(text = str("scan_another"), fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
             }
         }
     }
 }
 
-
+@Composable
 
 
 @Composable
@@ -1041,5 +1211,23 @@ fun HistoryScanCard(
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ErrorRed)
             }
         }
+    }
+}
+
+
+@Composable
+private fun PathologistContactRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFFF2F8F4))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 12.sp, color = TextPrimary, modifier = Modifier.weight(1f), maxLines = 2)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(text = value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ForestGreen)
     }
 }

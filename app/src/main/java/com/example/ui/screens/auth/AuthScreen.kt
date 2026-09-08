@@ -406,8 +406,10 @@ fun AuthScreen(
                                             coroutineScope.launch {
                                                 isSubmitting = true
                                                 try {
-                                                    val ok = viewModel.login(loginIdentifier, loginPassword)
-                                                    if (ok) onAuthSuccess() else loginError = "Invalid credentials. Try Demo Login."
+                                                    val ok = viewModel.login(loginIdentifier.trim(), loginPassword)
+                                                    if (ok) onAuthSuccess()
+                                                    else loginError = viewModel.lastAuthError.value
+                                                        ?: "Login failed. Please verify credentials."
                                                 } finally {
                                                     isSubmitting = false
                                                 }
@@ -467,11 +469,13 @@ fun AuthScreen(
                                                 isSubmitting = true
                                                 loginError = null
                                                 try {
-                                                    val ok = viewModel.login(loginIdentifier, loginPassword)
+                                                    val ok = viewModel.login(loginIdentifier.trim(), loginPassword)
                                                     if (ok) {
                                                         onAuthSuccess()
                                                     } else {
-                                                        loginError = if (langState.isUrdu) "لاگ ان میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔" else "Login failed. Please verify credentials."
+                                                        // Show what Supabase actually said, not a generic line.
+                                                        loginError = viewModel.lastAuthError.value
+                                                            ?: if (langState.isUrdu) "لاگ ان میں مسئلہ پیش آیا۔ دوبارہ کوشش کریں۔" else "Login failed. Please verify credentials."
                                                     }
                                                 } catch (e: Exception) {
                                                     loginError = e.localizedMessage ?: "Connection error"
@@ -876,7 +880,8 @@ fun AuthScreen(
                                                     if (ok) {
                                                         onAuthSuccess()
                                                     } else {
-                                                        signupError = "Registration error. Please check values."
+                                                        signupError = viewModel.lastAuthError.value
+                                                            ?: "Registration error. Please check values."
                                                     }
                                                 } catch (e: Exception) {
                                                     signupError = e.localizedMessage ?: "Registration error"

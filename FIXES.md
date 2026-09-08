@@ -351,3 +351,83 @@ small tile among four. The two swapped places:
 
 `QuickActionArtKind.CROP_SCAN` and its artwork are kept, since the scan is still
 reachable from the banner and the art may be reused.
+
+---
+
+# Sixth pass — auth errors were hidden
+
+## 20. The real login failure reason never reached the user
+
+`MainViewModel.login()` captured the exact message from Supabase and emitted it
+to `_userFeedback`, but that snackbar is hosted by the Scaffold in
+`MainActivity` — and the auth screen runs full screen, so it was never visible
+there. The screen then showed a hardcoded "Login failed. Please verify
+credentials." instead.
+
+That single generic line covers several completely different problems:
+
+- `Email not confirmed` — "Confirm email" is still on in Supabase
+- `Invalid login credentials` — wrong password, or the account was created with
+  a different provider (phone or anonymous)
+- `Backend connection failed...` — the app never reached Vercel at all
+
+Added `lastAuthError` to `MainViewModel`, set on every failed login and signup
+and cleared on success. The auth screen now displays it and falls back to the
+generic line only when there is nothing more specific.
+
+Also `.trim()` on the login identifier — a trailing space from the keyboard was
+enough to fail the match.
+
+---
+
+# Seventh pass — batch 1 of the UI request list
+
+## 21. Weather never got a location
+
+`refreshWeatherForCurrentLocation()` only called `getLastKnownLocation()` on the
+GPS and network providers. That returns null whenever no app has requested a
+position recently — the normal state on a fresh install and on most emulators —
+so the app silently fell back to the saved district every time.
+
+Rewritten in three steps: cached fix from *every* enabled provider (not just two),
+then an active single-shot `requestLocationUpdates` with a 12-second timeout when
+nothing is cached, then the district fallback. Fixes older than ten minutes are
+skipped when a fresher one exists. If location services are switched off
+entirely, the request returns immediately rather than hanging.
+
+## 22. Chemical treatment card was cramped
+
+The heading and the dosage-calculator toggle shared one `SpaceBetween` row. The
+Urdu toggle label is long, so it squeezed the heading and the card looked
+crushed. The toggle is now a full-width outlined button below the treatment text.
+
+## 23. Ask AI advisory, from the diagnosis
+
+New button under the treatment card opens the chat with the question already
+written from the diagnosis — crop, disease name and severity — so the farmer does
+not retype a disease name they just read. `MainViewModel.askAdvisoryAboutDiagnosis()`
+builds it in the active language and `MainActivity` navigates to the chat.
+
+## 24. Contact a pathologist
+
+A model prediction is not a diagnosis, so the result screen now offers a route to
+a person: a dialog with the Punjab Agriculture and Kisan Dost helplines, a dial
+intent, and a note that the local extension officer can be reached at the tehsil
+office. Both new buttons use the app's own greens (`ForestGreen` filled,
+`EmeraldGreen` outlined) rather than new colours.
+
+## 25. Save and Scan-another are now the same size
+
+Neither button had a fixed height, so they sized to their own labels and the pair
+looked mismatched. Both are `height(48.dp)` with `maxLines = 1`, and the outlined
+one picked up a matching `SuccessGreen` border.
+
+## 26. Dashboard order and season badge
+
+The disease detection banner moved above the quick action grid — it is the app's
+own trained model and the main reason the app gets opened, so it now sits where
+the quick actions were.
+
+The "Rabi 2026 / Wheat/Potato" badge was a flat grey-green box that read like a
+disabled button. Redrawn as a warm stamp: soft amber gradient, gold border, and
+`SeasonCropArt` — a wheat ear beside a potato — drawn on a Canvas.

@@ -649,15 +649,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Opens the advisory chat with a question already built from the diagnosis,
+     * so the farmer does not have to retype a disease name they just saw.
+     */
+    fun askAdvisoryAboutDiagnosis(result: PlantDiseaseResult, isUrdu: Boolean) {
+        val question = if (isUrdu) {
+            "میری ${result.cropName} کی فصل میں ${result.diseaseNameUr} کی تشخیص ہوئی ہے، شدت ${result.severityLevel} ہے۔ " +
+                "اس بیماری کے بارے میں تفصیل سے بتائیں: یہ کیوں پھیلتی ہے، آگے کیا احتیاط کروں، اور کتنے دن میں فرق نظر آنا چاہیے؟"
+        } else {
+            "My ${result.cropName} crop was diagnosed with ${result.diseaseNameEn} at ${result.severityLevel} severity. " +
+                "Explain this disease in detail: why it spreads, what I should do next, and how long before I see improvement."
+        }
+        sendChatMessage(question)
+    }
+
     fun resetScan() {
         _currentScanResult.value = null
         _selectedImageBitmap.value = null
     }
 
     // User Profile & Authentication
+
+    /**
+     * Exact reason the last auth attempt failed.
+     *
+     * The auth screen is full screen, so the snackbar carrying this text was never
+     * visible there and the user only saw a generic "verify credentials" line.
+     * Surfacing the real Supabase message ("Email not confirmed", "Invalid login
+     * credentials", a network error, and so on) is the difference between a
+     * fixable problem and a dead end.
+     */
+    private val _lastAuthError = MutableStateFlow<String?>(null)
+    val lastAuthError: StateFlow<String?> = _lastAuthError.asStateFlow()
+
+    fun clearAuthError() { _lastAuthError.value = null }
+
     suspend fun login(identifier: String, pass: String): Boolean {
         val result = userRepository.login(identifier, pass)
         return if (result.isSuccess) {
+            _lastAuthError.value = null
             _userFeedback.emit("خوش آمدید! Welcome ${result.getOrNull()?.fullName ?: ""}")
             // Bring this farmer's Supabase records down to the device, then push
             // anything still pending from a previous offline session.
@@ -665,7 +696,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             retryPendingCloudSync()
             true
         } else {
-            _userFeedback.emit(result.exceptionOrNull()?.message ?: "Login failed")
+            val reason = result.exceptionOrNull()?.message ?: "Login failed"
+            _lastAuthError.value = reason
+            _userFeedback.emit(reason)
             false
         }
     }
@@ -691,7 +724,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             retryPendingCloudSync()
             true
         } else {
-            _userFeedback.emit(result.exceptionOrNull()?.message ?: "Signup failed. Please check inputs.")
+            val reason = result.exceptionOrNull()?.message ?: "Signup failed. Please check inputs."
+            _lastAuthError.value = reason
+            _userFeedback.emit(reason)
             false
         }
     }

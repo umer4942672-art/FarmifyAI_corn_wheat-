@@ -170,27 +170,46 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Season Badge
+                    // Season badge. It was a plain grey-green box that read like a
+                    // disabled button; now it looks like a stamp with the season's
+                    // own crop art, so it reads as information rather than an action.
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = PaleGreenBg,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, BorderLight)
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.Transparent,
+                        modifier = Modifier.shadow(2.dp, RoundedCornerShape(14.dp), spotColor = Color(0x33F9A825))
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(Color(0xFFFFF6DC), Color(0xFFFDE9B8))
+                                    )
+                                )
+                                .border(1.dp, Color(0xFFE9C46A), RoundedCornerShape(14.dp))
+                                .padding(horizontal = 10.dp, vertical = 7.dp)
                         ) {
-                            Text(
-                                text = if (langState.isUrdu) "ربیع سیزن" else "Rabi 2026",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ForestGreen
-                            )
-                            Text(
-                                text = if (langState.isUrdu) "گندم و آلو" else "Wheat/Potato",
-                                fontSize = 10.sp,
-                                color = TextSecondary
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                SeasonCropArt(
+                                    accent = Color(0xFFB07D18),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(7.dp))
+                                Column {
+                                    Text(
+                                        text = if (langState.isUrdu) "ربیع سیزن" else "Rabi season",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF7A5510),
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = if (langState.isUrdu) "گندم و آلو · ۲۰۲۶" else "Wheat & potato · 2026",
+                                        fontSize = 9.sp,
+                                        color = Color(0xFF9C7526),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -509,72 +528,9 @@ fun DashboardScreen(
             }
         }
 
-        // 4. Quick Action 4-Button Grid (High Contrast & Visible)
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    // One language at a time. The Urdu label used to carry the
-                    // English name in brackets while the English one shouted in caps.
-                    text = if (langState.isUrdu) "فوری کارروائیاں" else "Quick actions",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    QuickActionTile(
-                        title = if (langState.isUrdu) "آمدن" else "Income",
-                        subtitle = if (langState.isUrdu) "فصل فروخت" else "Crop sale",
-                        art = QuickActionArtKind.INCOME,
-                        accentColor = SuccessGreen,
-                        onClick = onOpenAddIncome,
-                        modifier = Modifier.weight(1f)
-                    )
-                    QuickActionTile(
-                        title = if (langState.isUrdu) "خرچہ" else "Expense",
-                        subtitle = if (langState.isUrdu) "کھاد، ڈیزل" else "Fertilizer, fuel",
-                        art = QuickActionArtKind.EXPENSE,
-                        accentColor = ErrorRed,
-                        onClick = onOpenAddExpense,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    QuickActionTile(
-                        title = if (langState.isUrdu) "فیلڈ کام" else "Field work",
-                        subtitle = if (langState.isUrdu) "ہل، گوڈی، سپرے" else "Tillage, spray",
-                        art = QuickActionArtKind.FIELD_WORK,
-                        accentColor = ForestGreen,
-                        onClick = onOpenAddFieldWork,
-                        modifier = Modifier.weight(1f)
-                    )
-                    QuickActionTile(
-                        title = if (langState.isUrdu) "AI مشورہ" else "AI advisory",
-                        subtitle = if (langState.isUrdu) "کسان دوست سے پوچھیں" else "Ask Kisan Dost",
-                        art = QuickActionArtKind.ADVISORY,
-                        accentColor = Color(0xFF673AB7),
-                        onClick = onNavigateToKisanChat,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
-
-        // 5. AI Disease Detection hero banner (offline, on-device TFLite)
+        // 4. AI disease detection hero banner (offline, on-device TFLite).
+        //    Promoted above the quick actions: it is the app's own trained model
+        //    and the main reason a farmer opens the app.
         item {
             Surface(
                 onClick = onNavigateToScan,
@@ -690,6 +646,71 @@ fun DashboardScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // 5. Quick action grid
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    // One language at a time. The Urdu label used to carry the
+                    // English name in brackets while the English one shouted in caps.
+                    text = if (langState.isUrdu) "فوری کارروائیاں" else "Quick actions",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 10.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    QuickActionTile(
+                        title = if (langState.isUrdu) "آمدن" else "Income",
+                        subtitle = if (langState.isUrdu) "فصل فروخت" else "Crop sale",
+                        art = QuickActionArtKind.INCOME,
+                        accentColor = SuccessGreen,
+                        onClick = onOpenAddIncome,
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickActionTile(
+                        title = if (langState.isUrdu) "خرچہ" else "Expense",
+                        subtitle = if (langState.isUrdu) "کھاد، ڈیزل" else "Fertilizer, fuel",
+                        art = QuickActionArtKind.EXPENSE,
+                        accentColor = ErrorRed,
+                        onClick = onOpenAddExpense,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    QuickActionTile(
+                        title = if (langState.isUrdu) "فیلڈ کام" else "Field work",
+                        subtitle = if (langState.isUrdu) "ہل، گوڈی، سپرے" else "Tillage, spray",
+                        art = QuickActionArtKind.FIELD_WORK,
+                        accentColor = ForestGreen,
+                        onClick = onOpenAddFieldWork,
+                        modifier = Modifier.weight(1f)
+                    )
+                    QuickActionTile(
+                        title = if (langState.isUrdu) "AI مشورہ" else "AI advisory",
+                        subtitle = if (langState.isUrdu) "کسان دوست سے پوچھیں" else "Ask Kisan Dost",
+                        art = QuickActionArtKind.ADVISORY,
+                        accentColor = Color(0xFF673AB7),
+                        onClick = onNavigateToKisanChat,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
@@ -816,6 +837,29 @@ private fun WeatherMetricPill(
                 Text(text = value, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
         }
+    }
+}
+
+/** Wheat ear beside a potato, drawn to match the Rabi season badge. */
+@Composable
+private fun SeasonCropArt(accent: Color, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val s = this.size.minDimension
+        fun at(x: Float, y: Float) = androidx.compose.ui.geometry.Offset(s * x, s * y)
+        fun box(w: Float, h: Float) = androidx.compose.ui.geometry.Size(s * w, s * h)
+
+        // Wheat ear on the left
+        drawLine(accent, at(0.30f, 0.92f), at(0.30f, 0.30f), strokeWidth = s * 0.07f,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        for (i in 0..2) {
+            val y = 0.20f + i * 0.19f
+            drawOval(accent, topLeft = at(0.10f, y), size = box(0.20f, 0.12f))
+            drawOval(accent, topLeft = at(0.30f, y), size = box(0.20f, 0.12f))
+        }
+        // Potato on the right
+        drawOval(accent.copy(alpha = 0.55f), topLeft = at(0.56f, 0.52f), size = box(0.40f, 0.34f))
+        drawCircle(accent, radius = s * 0.030f, center = at(0.68f, 0.63f))
+        drawCircle(accent, radius = s * 0.030f, center = at(0.84f, 0.74f))
     }
 }
 
