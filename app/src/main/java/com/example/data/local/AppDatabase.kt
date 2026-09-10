@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [KhataEntryEntity::class, DiseaseScanEntity::class, UserEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,6 +29,20 @@ abstract class AppDatabase : RoomDatabase() {
          * is a safety net for databases from unreleased builds; this migration is
          * what actually preserves a real user's data.
          */
+        /**
+         * Adds a sync flag to disease scans.
+         *
+         * Without it the retry pass had no way to tell a synced scan from an
+         * unsynced one, so it re-uploaded the fifty most recent scans on every
+         * single app launch. Harmless to the data, because the upsert is
+         * idempotent, but fifty sequential network calls made startup crawl.
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE disease_scans ADD COLUMN isSyncedCloud INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE user_profiles ADD COLUMN profilePhotoPath TEXT NOT NULL DEFAULT ''")
@@ -42,7 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "farmify_database"
                 )
-                .addMigrations(MIGRATION_5_6)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration(false)
                 .build()
                 INSTANCE = instance

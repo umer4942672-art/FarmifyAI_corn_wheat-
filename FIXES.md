@@ -692,3 +692,41 @@ each colour.
 The card still reads as its own section: an emerald-tinted background, an emerald
 border, an emerald-tinted shadow, and a solid emerald-to-forest wallet tile with a
 white glyph.
+
+---
+
+# Fifteenth pass — a self-inflicted startup stall
+
+## 43. The retry pass re-uploaded fifty scans on every launch
+
+`retryPendingSync` re-pushed the fifty most recent disease scans each time the
+app started:
+
+```kotlin
+diseaseScanDao.getRecentScansForUser(userKey, 50).forEach { scan ->
+    if (sync.syncDiseaseDetection(scan)) pushed++
+}
+```
+
+That shortcut was taken in pass 7 because `disease_scans` had no sync flag and I
+wanted to avoid a schema change. The backend upsert is idempotent, so no data was
+harmed — but it meant up to fifty sequential HTTP requests on every cold start,
+whether or not anything actually needed syncing. Once cloud sync began working
+properly, that turned into a visible stall.
+
+Fixed the right way rather than the cheap way:
+
+- `isSyncedCloud` added to `DiseaseScanEntity`, with `MIGRATION_6_7`.
+- `getUnsyncedScans()` replaces `getRecentScansForUser()`; the retry touches only
+  rows that never reached the cloud.
+- The save path marks a scan synced when its upsert succeeds, and rows arriving
+  from `bootstrap` are inserted already marked synced.
+
+On a device where everything is in sync, startup now issues **zero** retry
+requests instead of fifty.
+
+## 44. Overlapping retry passes
+
+App start and a successful login both call `retryPendingCloudSync()`, so the two
+passes could run concurrently and push the same rows twice. A `retryMutex`
+serialises them, matching the existing guard on the restore pass.

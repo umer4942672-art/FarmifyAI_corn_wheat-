@@ -72,7 +72,10 @@ class DiseaseDetectionRepository(
 
         try {
             val cloudEntity = entity.copy(id = id)
-            supabaseSync.syncDiseaseDetection(cloudEntity)
+            // Mark it synced so the retry pass skips it on the next launch.
+            if (supabaseSync.syncDiseaseDetection(cloudEntity)) {
+                diseaseScanDao.setScanSynced(id, true)
+            }
             if (cloudEntity.imageUriOrPath.isNotBlank() && !cloudEntity.imageUriOrPath.startsWith("content://")) {
                 supabaseSync.uploadDiseaseImage(cloudEntity.imageUriOrPath, "db:$id", cloudEntity.cropName)
             }

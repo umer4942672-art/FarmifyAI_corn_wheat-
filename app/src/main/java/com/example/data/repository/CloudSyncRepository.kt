@@ -40,6 +40,9 @@ class CloudSyncRepository(
 ) {
 
     private val restoreMutex = Mutex()
+    // App start and a login both trigger a retry. Without this guard the two
+    // passes overlap and push the same rows twice.
+    private val retryMutex = Mutex()
 
     /** Calls GET /api/sync/bootstrap and merges the result into Room. */
     suspend fun restoreFromCloud(userKey: String): CloudRestoreSummary = restoreMutex.withLock {
@@ -79,8 +82,15 @@ class CloudSyncRepository(
     }
 
     /** Re-sends everything that is still marked unsynced locally. */
-    suspend fun retryPendingSync(userKey: String): Int = withContext(Dispatchers.IO) {
-        if (!sync.hasSession()) return@withContext 0
+    suspend fun retryPendingSync(userKey: String): Int = retryMutex.withLock {
+        withContext(Dispatchers.IO) {
+            retryPendingSyncInternal(userKey)
+        }
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private suspend fun retryPendingSyncInternal(userKey: String): Int {
+        if (!sync.hasSession()) return 0
         var pushed = 0
 
         runCatching {
@@ -92,17 +102,19 @@ class CloudSyncRepository(
             }
         }.onFailure { Log.w(TAG, "Khata retry failed: ${it.localizedMessage}") }
 
-        // Disease upserts are idempotent on the backend (uuid5 of user id + local id),
-        // so re-pushing recent scans is safe and repairs anything missed while offline.
+        // Only rows that never reached the cloud. This used to re-push the fifty
+        // most recent scans on every launch, which meant fifty sequential network
+        // calls each time the app opened.
         runCatching {
-            if (userKey.isNotBlank()) {
-                diseaseScanDao.getRecentScansForUser(userKey, 50).forEach { scan ->
-                    if (sync.syncDiseaseDetection(scan)) pushed++
+            diseaseScanDao.getUnsyncedScans(100).forEach { scan ->
+                if (sync.syncDiseaseDetection(scan)) {
+                    diseaseScanDao.setScanSynced(scan.id, true)
+                    pushed++
                 }
             }
         }.onFailure { Log.w(TAG, "Disease retry failed: ${it.localizedMessage}") }
 
-        pushed
+        return pushed
     }
 
     suspend fun pendingCount(): Int = withContext(Dispatchers.IO) {
@@ -166,7 +178,8 @@ class CloudSyncRepository(
             // The cloud stores a private storage path, not a local file, so history
             // rows restored from the cloud show without a thumbnail.
             imageUriOrPath = "",
-            timestamp = parseTimestamp(row.optString("created_at"))
+            timestamp = parseTimestamp(row.optString("created_at")),
+            isSyncedCloud = true
         )
         diseaseScanDao.insertScan(entity)
         return true

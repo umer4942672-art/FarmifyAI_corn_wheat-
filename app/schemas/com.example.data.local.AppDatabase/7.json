@@ -1,0 +1,427 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "ae8f099cf74d212012801cdc92c9be6f",
+    "entities": [
+      {
+        "tableName": "khata_entries",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `userId` TEXT NOT NULL, `entryType` TEXT NOT NULL, `date` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `cropName` TEXT NOT NULL, `fieldName` TEXT NOT NULL, `fieldSizeAcres` REAL NOT NULL, `activityType` TEXT NOT NULL, `description` TEXT NOT NULL, `laborCost` REAL NOT NULL, `seedCost` REAL NOT NULL, `fertilizerCost` REAL NOT NULL, `pesticideCost` REAL NOT NULL, `irrigationCost` REAL NOT NULL, `machineryCost` REAL NOT NULL, `transportationCost` REAL NOT NULL, `otherExpenses` REAL NOT NULL, `quantity` REAL NOT NULL, `unit` TEXT NOT NULL, `sellingPricePerUnit` REAL NOT NULL, `totalAmount` REAL NOT NULL, `buyerOrMandi` TEXT NOT NULL, `isSynced` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryType",
+            "columnName": "entryType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cropName",
+            "columnName": "cropName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fieldName",
+            "columnName": "fieldName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fieldSizeAcres",
+            "columnName": "fieldSizeAcres",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "activityType",
+            "columnName": "activityType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "laborCost",
+            "columnName": "laborCost",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seedCost",
+            "columnName": "seedCost",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fertilizerCost",
+            "columnName": "fertilizerCost",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pesticideCost",
+            "columnName": "pesticideCost",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "irrigationCost",
+            "columnName": "irrigationCost",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "machineryCost",
+            "columnName": "machineryCost",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transportationCost",
+            "columnName": "transportationCost",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "otherExpenses",
+            "columnName": "otherExpenses",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unit",
+            "columnName": "unit",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sellingPricePerUnit",
+            "columnName": "sellingPricePerUnit",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalAmount",
+            "columnName": "totalAmount",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "buyerOrMandi",
+            "columnName": "buyerOrMandi",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSynced",
+            "columnName": "isSynced",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "disease_scans",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `userId` TEXT NOT NULL, `cropName` TEXT NOT NULL, `diseaseNameEn` TEXT NOT NULL, `diseaseNameUr` TEXT NOT NULL, `confidencePercent` INTEGER NOT NULL, `isHealthy` INTEGER NOT NULL, `severityLevel` TEXT NOT NULL, `symptoms` TEXT NOT NULL, `symptomsUr` TEXT NOT NULL, `chemicalTreatment` TEXT NOT NULL, `chemicalTreatmentUr` TEXT NOT NULL, `organicPrevention` TEXT NOT NULL, `organicPreventionUr` TEXT NOT NULL, `advisoryNote` TEXT NOT NULL, `advisoryNoteUr` TEXT NOT NULL, `imageUriOrPath` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `isSyncedCloud` INTEGER NOT NULL, `isSample` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cropName",
+            "columnName": "cropName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "diseaseNameEn",
+            "columnName": "diseaseNameEn",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "diseaseNameUr",
+            "columnName": "diseaseNameUr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confidencePercent",
+            "columnName": "confidencePercent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isHealthy",
+            "columnName": "isHealthy",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "severityLevel",
+            "columnName": "severityLevel",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "symptoms",
+            "columnName": "symptoms",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "symptomsUr",
+            "columnName": "symptomsUr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chemicalTreatment",
+            "columnName": "chemicalTreatment",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chemicalTreatmentUr",
+            "columnName": "chemicalTreatmentUr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "organicPrevention",
+            "columnName": "organicPrevention",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "organicPreventionUr",
+            "columnName": "organicPreventionUr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "advisoryNote",
+            "columnName": "advisoryNote",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "advisoryNoteUr",
+            "columnName": "advisoryNoteUr",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageUriOrPath",
+            "columnName": "imageUriOrPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSyncedCloud",
+            "columnName": "isSyncedCloud",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSample",
+            "columnName": "isSample",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "user_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`phoneOrEmail` TEXT NOT NULL, `fullName` TEXT NOT NULL, `phone` TEXT NOT NULL, `email` TEXT NOT NULL, `passwordHash` TEXT NOT NULL, `supabaseUserId` TEXT NOT NULL, `profilePhotoPath` TEXT NOT NULL, `farmName` TEXT NOT NULL, `district` TEXT NOT NULL, `province` TEXT NOT NULL, `farmLocation` TEXT NOT NULL, `totalAcres` REAL NOT NULL, `primaryCropsString` TEXT NOT NULL, `isActiveSession` INTEGER NOT NULL, `weatherNotifications` INTEGER NOT NULL, `mandiNotifications` INTEGER NOT NULL, `diseaseAlerts` INTEGER NOT NULL, `khataReminders` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`phoneOrEmail`))",
+        "fields": [
+          {
+            "fieldPath": "phoneOrEmail",
+            "columnName": "phoneOrEmail",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fullName",
+            "columnName": "fullName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "phone",
+            "columnName": "phone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "email",
+            "columnName": "email",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "passwordHash",
+            "columnName": "passwordHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supabaseUserId",
+            "columnName": "supabaseUserId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profilePhotoPath",
+            "columnName": "profilePhotoPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "farmName",
+            "columnName": "farmName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "district",
+            "columnName": "district",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "province",
+            "columnName": "province",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "farmLocation",
+            "columnName": "farmLocation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalAcres",
+            "columnName": "totalAcres",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "primaryCropsString",
+            "columnName": "primaryCropsString",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isActiveSession",
+            "columnName": "isActiveSession",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weatherNotifications",
+            "columnName": "weatherNotifications",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mandiNotifications",
+            "columnName": "mandiNotifications",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "diseaseAlerts",
+            "columnName": "diseaseAlerts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "khataReminders",
+            "columnName": "khataReminders",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "phoneOrEmail"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ae8f099cf74d212012801cdc92c9be6f')"
+    ]
+  }
+}

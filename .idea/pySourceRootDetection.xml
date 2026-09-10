@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PySourceRootDetectionService">
+    <option name="sourcePathsSet">
+      <set>
+        <option value="$PROJECT_DIR$/app/src/main/java" />
+        <option value="$PROJECT_DIR$/app/src/main/res" />
+        <option value="$PROJECT_DIR$/app/src/main/assets" />
+        <option value="$PROJECT_DIR$/app/build/generated/ksp/debug/kotlin" />
+        <option value="$PROJECT_DIR$/app/build/generated/ap_generated_sources/debug/out" />
+        <option value="$PROJECT_DIR$/app/build/generated/source/buildConfig/debug" />
+        <option value="$PROJECT_DIR$/app/src/test/java" />
+        <option value="$PROJECT_DIR$/app/src/androidTest/java" />
+      </set>
+    </option>
+  </component>
+</project>

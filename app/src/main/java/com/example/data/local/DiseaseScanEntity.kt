@@ -24,5 +24,7 @@ data class DiseaseScanEntity(
     val advisoryNoteUr: String,
     val imageUriOrPath: String = "",
     val timestamp: Long = System.currentTimeMillis(),
+    /** False until the row has reached Supabase. Retry only touches false rows. */
+    val isSyncedCloud: Boolean = false,
     val isSample: Boolean = false
 )
