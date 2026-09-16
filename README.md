@@ -2,7 +2,7 @@
 
 An Android agriculture assistant for Pakistani farmers. It diagnoses wheat and
 maize leaf diseases on the device, keeps a bilingual farm ledger, and answers crop
-questions in Urdu or English — with the network treated as optional throughout.
+questions in Urdu or English with the network treated as optional throughout.
 
 The app is built around one constraint: a farmer standing in a field often has no
 usable signal. Disease detection therefore runs entirely on the phone, records are
