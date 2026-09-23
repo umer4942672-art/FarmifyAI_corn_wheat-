@@ -126,6 +126,26 @@ class SupabaseService:
             )
             return response.status_code, response.text
 
+    async def insert_returning(self, table, payload):
+        """INSERT that returns the created row, for ids the database generates."""
+        if not self.configured:
+            return self.configuration_error()
+        headers = self.headers(service=True)
+        headers["Prefer"] = "return=representation"
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{self.base}/rest/v1/{table}",
+                headers=headers,
+                json=payload,
+            )
+            data = []
+            if response.content:
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = []
+            return response.status_code, data
+
     async def rpc(self, function_name, payload):
         if not self.configured:
             return self.configuration_error()

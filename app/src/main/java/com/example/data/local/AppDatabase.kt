@@ -8,14 +8,20 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [KhataEntryEntity::class, DiseaseScanEntity::class, UserEntity::class],
-    version = 7,
+    entities = [
+        KhataEntryEntity::class,
+        DiseaseScanEntity::class,
+        UserEntity::class,
+        PendingProofEntity::class
+    ],
+    version = 8,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun khataDao(): KhataDao
     abstract fun diseaseScanDao(): DiseaseScanDao
     abstract fun userDao(): UserDao
+    abstract fun pendingProofDao(): PendingProofDao
 
     companion object {
         @Volatile
@@ -37,6 +43,33 @@ abstract class AppDatabase : RoomDatabase() {
          * single app launch. Harmless to the data, because the upsert is
          * idempotent, but fifty sequential network calls made startup crawl.
          */
+        /**
+         * Offline queue for contractor evidence captured without a signal.
+         * Column types and nullability match PendingProofEntity exactly, which
+         * Room verifies on open.
+         */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS pending_proofs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        workOrderId TEXT NOT NULL,
+                        stage TEXT NOT NULL,
+                        imagePath TEXT NOT NULL,
+                        latitude REAL NOT NULL,
+                        longitude REAL NOT NULL,
+                        accuracyM REAL,
+                        capturedAtIso TEXT NOT NULL,
+                        isMockLocation INTEGER NOT NULL,
+                        attempts INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         private val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE disease_scans ADD COLUMN isSyncedCloud INTEGER NOT NULL DEFAULT 0")
@@ -56,7 +89,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "farmify_database"
                 )
-                .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigration(false)
                 .build()
                 INSTANCE = instance

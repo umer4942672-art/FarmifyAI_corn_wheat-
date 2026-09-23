@@ -730,3 +730,81 @@ requests instead of fifty.
 App start and a successful login both call `retryPendingCloudSync()`, so the two
 passes could run concurrently and push the same rows twice. A `retryMutex`
 serialises them, matching the existing guard on the restore pass.
+
+---
+
+# Sixteenth pass — landowner and contractor verification
+
+A new feature rather than a fix. It was Phase 4 of the original proposal and is
+built on the parts the app already had: Supabase auth, private storage, the
+ledger, the location helper and the backend's ownership checks.
+
+## The problem
+
+A landowner who does not live at the farm has no record of what a contractor
+actually did. Disputes are about the work ("you sprayed six acres, not ten"),
+the timing, and above all the money ("I paid you" / "I never received it").
+
+## Database
+
+`supabase/migrations/002_contractor_verification.sql`, also appended to
+`schema.sql`. Five additions:
+
+- `profiles.role` — landowner or contractor, defaulting to landowner so no
+  existing account changes
+- `contractor_links` — a landowner may only assign work to a contractor who has
+  accepted their invitation
+- `work_orders` — the job and its agreed rate. `total_amount` is a generated
+  column, so it cannot drift from `area_acres × rate_per_acre`
+- `work_proofs` — photo path, GPS, accuracy, and **two** timestamps: the device
+  clock and the server clock, because the device clock can be changed
+- `work_payments` — a payment carries `status`, and counts only once the payee
+  confirms it
+- `work_order_balances` — a view computing `payable − paid`, where payable comes
+  from **verified** acres, not the agreed area
+
+## Backend
+
+`backend/app/routers/work.py`, thirteen endpoints. Every one derives the caller
+from the token and confirms they are a party to the record before touching it;
+a record the caller is not party to returns 404, not 403, so ids cannot be
+probed.
+
+Rules enforced on the server, not the client:
+
+- only the assigned contractor may accept, upload evidence or submit
+- only the landowner may review, and only a submitted job
+- only the payee may confirm a payment
+- a digital payment requires a transaction reference
+- submission requires at least one photo of the finished work
+- partial approval must be above zero and below the agreed area
+- a confirmed payment posts to both parties' ledgers, and the job closes itself
+  once the balance reaches zero
+
+`backend/tests/test_work_flow.py` exercises all of this against an in-memory
+stand-in for Supabase. Twenty-eight checks, all passing.
+
+## Android
+
+- Room gains `pending_proofs` and `MIGRATION_7_8`. Evidence captured without a
+  signal keeps the field's GPS fix and capture time and uploads later, the same
+  offline-first path the ledger already uses
+- `FieldLocation` takes a single fresh fix and reports Android's mock-location
+  flag
+- Capture is **camera only**. A gallery picker would allow an old photo taken
+  elsewhere, which is the thing this evidence exists to rule out
+- Sign-up asks for the account type; the choice is stored and sent once a
+  session exists
+- Reached from a dashboard card and from Settings, rather than a sixth item in
+  the bottom bar
+
+## What it does not do
+
+Stated plainly because these will be asked about:
+
+- distance from the field is **reported, not enforced**; the landowner decides
+- a photo shows the contractor was there, not how much of the field was covered
+- no money moves through the app. A transaction reference is recorded; sending
+  payments needs a merchant agreement, and holding them needs a State Bank
+  licence
+- the mock-location flag is the only spoofing check

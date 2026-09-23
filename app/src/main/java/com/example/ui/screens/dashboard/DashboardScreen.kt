@@ -55,6 +55,7 @@ fun DashboardScreen(
     onOpenAddIncome: () -> Unit,
     onOpenAddExpense: () -> Unit,
     onOpenAddFieldWork: () -> Unit,
+    onNavigateToWork: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val langState = LocalAppLanguage.current
@@ -736,6 +737,62 @@ fun DashboardScreen(
                         onClick = onNavigateToKisanChat,
                         modifier = Modifier.weight(1f)
                     )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Contractor verification. Placed with the quick actions because a
+                // farmer reaches it the same way, as one more thing to record.
+                Surface(
+                    onClick = onNavigateToWork,
+                    shape = RoundedCornerShape(18.dp),
+                    color = SoftWhite,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderSlate),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(6.dp, RoundedCornerShape(18.dp), spotColor = Color(0x33795548))
+                        .testTag("dashboard_work_card")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(13.dp))
+                                .background(Color(0xFF795548).copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Handshake,
+                                contentDescription = null,
+                                tint = Color(0xFF795548),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (langState.isUrdu) "ٹھیکیدار کام اور تصدیق" else "Contractor work & verification",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = if (langState.isUrdu) "تصویر، جگہ اور وقت کے ساتھ حساب" else "Proof of work, and a settled account",
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                maxLines = 1
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
+                    }
                 }
             }
         }

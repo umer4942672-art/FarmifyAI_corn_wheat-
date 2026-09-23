@@ -48,11 +48,14 @@ enum class AuthMode {
 fun AuthScreen(
     viewModel: MainViewModel,
     onAuthSuccess: () -> Unit,
+    /** Remembers the account type chosen at sign-up so it can be sent once a session exists. */
+    onRoleSelected: (com.example.data.model.UserRole) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val langState = LocalAppLanguage.current
     val coroutineScope = rememberCoroutineScope()
     var authMode by remember { mutableStateOf(AuthMode.LOGIN) }
+    var signupRole by remember { mutableStateOf(com.example.data.model.UserRole.LANDOWNER) }
     val focusManager = LocalFocusManager.current
     var isSubmitting by remember { mutableStateOf(false) }
 
@@ -651,6 +654,55 @@ fun AuthScreen(
 
                                 Spacer(modifier = Modifier.height(12.dp))
 
+                                // Account type. A contractor sees the jobs assigned to
+                                // them; a landowner creates the work and reviews it.
+                                Text(
+                                    text = if (langState.isUrdu) "اکاؤنٹ کی قسم *" else "Account type *",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    listOf(
+                                        com.example.data.model.UserRole.LANDOWNER to
+                                            (if (langState.isUrdu) "زمیندار / کسان" else "Landowner / Farmer"),
+                                        com.example.data.model.UserRole.CONTRACTOR to
+                                            (if (langState.isUrdu) "ٹھیکیدار" else "Contractor")
+                                    ).forEach { (role, label) ->
+                                        val selected = signupRole == role
+                                        Surface(
+                                            onClick = { signupRole = role },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (selected) EmeraldGreen else Color.Transparent,
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.5.dp,
+                                                if (selected) EmeraldGreen else BorderSlate
+                                            ),
+                                            modifier = Modifier.weight(1f).height(46.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxSize(),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = label,
+                                                    fontSize = 12.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    color = if (selected) Color.White else TextPrimary
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
                                 // District Dropdown Selector
                                 Text(
                                     text = if (langState.isUrdu) "ضلع و شہر *" else "District / City *",
@@ -878,6 +930,7 @@ fun AuthScreen(
                                                         crops = selectedCrops.toList()
                                                     )
                                                     if (ok) {
+                                                        onRoleSelected(signupRole)
                                                         onAuthSuccess()
                                                     } else {
                                                         signupError = viewModel.lastAuthError.value

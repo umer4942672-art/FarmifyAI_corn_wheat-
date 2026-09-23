@@ -84,6 +84,22 @@ sealed class Screen(
         iconOutlined = Icons.Outlined.DocumentScanner
     )
 
+    data object Work : Screen(
+        route = "work",
+        titleEn = "Contractor Work",
+        titleUr = "ٹھیکیدار کام",
+        iconFilled = Icons.Filled.Handshake,
+        iconOutlined = Icons.Outlined.Handshake
+    )
+
+    data object WorkDetail : Screen(
+        route = "work_detail",
+        titleEn = "Job Detail",
+        titleUr = "کام کی تفصیل",
+        iconFilled = Icons.Filled.Handshake,
+        iconOutlined = Icons.Outlined.Handshake
+    )
+
     data object Settings : Screen(
         route = "settings",
         titleEn = "Settings",

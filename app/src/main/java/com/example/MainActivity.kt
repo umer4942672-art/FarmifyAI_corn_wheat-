@@ -36,9 +36,12 @@ import com.example.ui.screens.khata.SmartKhataScreen
 import com.example.ui.screens.mandi.MandiRatesScreen
 import com.example.ui.screens.settings.SettingsScreen
 import com.example.ui.screens.splash.SplashScreen
+import com.example.ui.screens.work.WorkHomeScreen
+import com.example.ui.screens.work.WorkOrderDetailScreen
 import com.example.ui.screens.weather.WeatherForecastScreen
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
+import com.example.ui.viewmodel.WorkViewModel
 import com.example.util.LanguageState
 import com.example.util.LocalAppLanguage
 import com.example.util.str
@@ -101,12 +104,22 @@ fun FarmifyApp(
     }
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
 
+    // Contractor verification keeps its own view model; it shares only the
+    // database and the backend client with the rest of the app.
+    val workViewModel: WorkViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+
     var showAddIncomeDialog by remember { mutableStateOf(false) }
     var showAddExpenseDialog by remember { mutableStateOf(false) }
     var showAddFieldWorkDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.userFeedback.collectLatest { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        workViewModel.message.collectLatest { message ->
             snackbarHostState.showSnackbar(message)
         }
     }
@@ -211,7 +224,9 @@ fun FarmifyApp(
                     )
                     Screen.Auth -> AuthScreen(
                         viewModel = viewModel,
+                        onRoleSelected = { role -> workViewModel.chooseRoleAtSignup(role) },
                         onAuthSuccess = {
+                            workViewModel.refreshAll()
                             resetTo(Screen.Dashboard)
                         }
                     )
@@ -225,7 +240,8 @@ fun FarmifyApp(
                         onNavigateToCropsGuide = { navigateTo(Screen.CropsGuide) },
                         onOpenAddIncome = { showAddIncomeDialog = true },
                         onOpenAddExpense = { showAddExpenseDialog = true },
-                        onOpenAddFieldWork = { showAddFieldWorkDialog = true }
+                        onOpenAddFieldWork = { showAddFieldWorkDialog = true },
+                        onNavigateToWork = { navigateTo(Screen.Work) }
                     )
                     Screen.CropsGuide -> CropsGuideScreen(
                         viewModel = viewModel,
@@ -242,6 +258,20 @@ fun FarmifyApp(
                         },
                         onNavigateToDiseaseScan = { navigateTo(Screen.DiseaseScan) }
                     )
+                    Screen.Work -> WorkHomeScreen(
+                        workViewModel = workViewModel,
+                        onOpenOrder = { orderId ->
+                            workViewModel.openOrder(orderId)
+                            navigateTo(Screen.WorkDetail)
+                        }
+                    )
+                    Screen.WorkDetail -> WorkOrderDetailScreen(
+                        workViewModel = workViewModel,
+                        onBack = {
+                            workViewModel.closeOrder()
+                            navigateTo(Screen.Work)
+                        }
+                    )
                     Screen.Khata -> SmartKhataScreen(viewModel = viewModel)
                     Screen.Mandi -> MandiRatesScreen(viewModel = viewModel)
                     Screen.Weather -> WeatherForecastScreen(viewModel = viewModel)
@@ -251,6 +281,7 @@ fun FarmifyApp(
                     )
                     Screen.Settings -> SettingsScreen(
                         viewModel = viewModel,
+                        onNavigateToWork = { navigateTo(Screen.Work) },
                         onLogout = {
                             resetTo(Screen.Auth)
                         }

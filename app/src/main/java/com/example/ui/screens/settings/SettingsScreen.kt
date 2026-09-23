@@ -44,6 +44,7 @@ import com.example.util.str
 fun SettingsScreen(
     viewModel: MainViewModel,
     onLogout: () -> Unit = {},
+    onNavigateToWork: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -213,6 +214,41 @@ fun SettingsScreen(
                     ) {
                         viewModel.setLanguage(AppLanguage.URDU)
                         langState.setLanguage(AppLanguage.URDU)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            SectionHeader(
+                title = if (langState.isUrdu) "ٹھیکیدار کام" else "Contractor work",
+                icon = Icons.Outlined.Handshake
+            )
+
+            GlassCard {
+                Surface(
+                    onClick = onNavigateToWork,
+                    color = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (langState.isUrdu) "کام اور تصدیق" else "Work and verification",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = if (langState.isUrdu)
+                                    "ٹھیکیدار کے کام، ثبوت اور ادائیگیاں"
+                                else
+                                    "Jobs, evidence and payments with contractors",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextSecondary)
                     }
                 }
             }
