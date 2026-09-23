@@ -860,11 +860,12 @@ invocation may run on a different event loop from the one that created it. The
 client is now keyed by event loop, its transport retries connection failures,
 and a `ConnectError` discards the pooled client so the next call starts clean.
 
-**The deployment config.** `vercel.json` used the legacy `builds` format, which
-no longer routes to the same runtime as the existing production build. Replaced
-with a `rewrites` entry and an explicit `api/index.py` entry point. The
-application itself is untouched and still runs locally with
-`uvicorn app.main:app`.
+**The deployment config.** Switching `vercel.json` to a `rewrites` entry was
+tried and reverted: rewriting to `/api/index` changes the path the application
+receives, so every route returned 404. That 404 was still informative, because
+it proved the application starts and serves requests on the current runtime -
+the original failure was in its outbound calls, not its startup. The routing is
+back to the form that preserves the request path.
 
 **Error visibility.** An unhandled exception reached the client as a bare
 "Internal Server Error" with an empty body, which is why this took so long to
