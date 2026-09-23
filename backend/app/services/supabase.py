@@ -1,5 +1,57 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 import httpx
+
 from app.config import settings
+
+# One client per event loop, reused across calls.
+#
+# Two problems are being solved here.
+#
+# Creating a fresh AsyncClient for every request opens and tears down a
+# connection pool each time. On Vercel's Python runtime that exhausts the
+# sandbox's socket handles and the next connect fails before it reaches
+# Supabase at all, with "[Errno 16] Device or resource busy".
+#
+# A single module-level client is not safe either: a serverless invocation may
+# run on a different event loop from the one the client was created on, and a
+# client bound to a finished loop raises on use. Keying by loop avoids that
+# while still reusing connections within an invocation.
+#
+# The transport retries connection failures, so a transient socket error
+# recovers instead of surfacing as a 500.
+_clients: dict[int, httpx.AsyncClient] = {}
+
+
+def _build_client(timeout: float) -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        timeout=timeout,
+        transport=httpx.AsyncHTTPTransport(retries=3),
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+    )
+
+
+@asynccontextmanager
+async def http_client(timeout: float = 30):
+    """Yield a client bound to the running loop. Deliberately not closed here."""
+    try:
+        key = id(asyncio.get_running_loop())
+    except RuntimeError:
+        key = 0
+
+    client = _clients.get(key)
+    if client is None or client.is_closed:
+        client = _build_client(timeout)
+        _clients[key] = client
+
+    try:
+        yield client
+    except httpx.ConnectError:
+        # The pooled connection is unusable; drop it so the next call starts clean.
+        _clients.pop(key, None)
+        await client.aclose()
+        raise
 
 
 class SupabaseService:
@@ -30,7 +82,7 @@ class SupabaseService:
     async def signup(self, payload):
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/auth/v1/signup",
                 headers=self.headers(),
@@ -41,14 +93,14 @@ class SupabaseService:
     async def anonymous_signup(self):
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(f"{self.base}/auth/v1/signup", headers=self.headers(), json={"data": {"guest": True}})
             return response.status_code, response.json() if response.content else {}
 
     async def login(self, identifier, password, is_phone: bool = False):
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/auth/v1/token?grant_type=password",
                 headers=self.headers(),
@@ -60,7 +112,7 @@ class SupabaseService:
         """Exchange a refresh token for a new short-lived access token."""
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/auth/v1/token?grant_type=refresh_token",
                 headers=self.headers(),
@@ -72,7 +124,7 @@ class SupabaseService:
         """Revoke the Supabase session (and its refresh token) for this access token."""
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/auth/v1/logout",
                 headers=self.headers(access_token=access_token),
@@ -82,7 +134,7 @@ class SupabaseService:
     async def recover(self, email):
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/auth/v1/recover",
                 headers=self.headers(),
@@ -93,7 +145,7 @@ class SupabaseService:
     async def get_user(self, access_token: str):
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.get(
                 f"{self.base}/auth/v1/user",
                 headers=self.headers(access_token=access_token),
@@ -105,7 +157,7 @@ class SupabaseService:
     async def select(self, table, params=None):
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.get(
                 f"{self.base}/rest/v1/{table}",
                 headers=self.headers(service=True),
@@ -118,7 +170,7 @@ class SupabaseService:
             return self.configuration_error()
         headers = self.headers(service=True)
         headers["Prefer"] = "return=minimal"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/rest/v1/{table}",
                 headers=headers,
@@ -132,7 +184,7 @@ class SupabaseService:
             return self.configuration_error()
         headers = self.headers(service=True)
         headers["Prefer"] = "return=representation"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/rest/v1/{table}",
                 headers=headers,
@@ -149,7 +201,7 @@ class SupabaseService:
     async def rpc(self, function_name, payload):
         if not self.configured:
             return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/rest/v1/rpc/{function_name}",
                 headers=self.headers(service=True),
@@ -162,7 +214,7 @@ class SupabaseService:
             return self.configuration_error()
         headers = self.headers(service=True)
         headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.post(
                 f"{self.base}/rest/v1/{table}",
                 headers=headers,
@@ -177,7 +229,7 @@ class SupabaseService:
             return self.configuration_error()
         headers = self.headers(service=True)
         headers["Prefer"] = "return=representation"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             response = await client.patch(
                 f"{self.base}/rest/v1/{table}",
                 headers=headers,
@@ -194,7 +246,7 @@ class SupabaseService:
 
     async def delete(self, table, params):
         if not self.configured: return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             r = await client.delete(f"{self.base}/rest/v1/{table}", headers=self.headers(service=True), params=params)
             return r.status_code, r.text
 
@@ -203,19 +255,19 @@ class SupabaseService:
         headers = self.headers(service=True)
         headers["Content-Type"] = content_type
         headers["x-upsert"] = "true"
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with http_client(60) as client:
             r = await client.post(f"{self.base}/storage/v1/object/{bucket}/{path}", headers=headers, content=content)
             return r.status_code, r.json() if r.content else {}
 
     async def delete_storage(self, bucket: str, path: str):
         if not self.configured: return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             r = await client.delete(f"{self.base}/storage/v1/object/{bucket}/{path}", headers=self.headers(service=True))
             return r.status_code, r.text
 
     async def signed_url(self, bucket: str, path: str, expires_in: int = 3600):
         if not self.configured: return self.configuration_error()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with http_client(30) as client:
             r = await client.post(f"{self.base}/storage/v1/object/sign/{bucket}/{path}", headers=self.headers(service=True), json={"expiresIn": expires_in})
             data = r.json() if r.content else {}
             if r.status_code < 400 and data.get("signedURL"):

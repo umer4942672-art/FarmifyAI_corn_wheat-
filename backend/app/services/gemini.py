@@ -1,4 +1,6 @@
 import httpx
+
+from app.services.supabase import http_client
 from app.config import settings
 
 
@@ -31,7 +33,7 @@ class GeminiService:
             "Content-Type": "application/json",
             "x-goog-api-key": settings.gemini_api_key,
         }
-        async with httpx.AsyncClient(timeout=settings.gemini_timeout_seconds) as client:
+        async with http_client(settings.gemini_timeout_seconds) as client:
             response = await client.post(url, json=payload, headers=headers)
             if response.status_code >= 400:
                 raise RuntimeError(f"Gemini API {response.status_code}: {response.text[:500]}")

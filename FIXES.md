@@ -808,3 +808,72 @@ Stated plainly because these will be asked about:
   payments needs a merchant agreement, and holding them needs a State Bank
   licence
 - the mock-location flag is the only spoofing check
+
+## 45. Every Supabase call opened its own connection pool
+
+`supabase.py` created a fresh `httpx.AsyncClient` for each of its seventeen
+call sites, and `gemini.py` did the same:
+
+```python
+async with httpx.AsyncClient(timeout=30) as client:
+```
+
+Each request therefore built a connection pool, performed a TLS handshake and
+tore the pool down again. On Vercel's current Python runtime this exhausts the
+sandbox's socket handles, and the next connect fails before it reaches Supabase
+at all:
+
+```
+httpx.ConnectError: [Errno 16] Device or resource busy
+```
+
+The symptom is misleading. The service is reachable, the credentials are valid,
+and the same request from a laptop succeeds — only calls made from inside the
+deployed function fail, and they fail with a connection error rather than an
+authentication one.
+
+Replaced with a single shared client behind `http_client()`, an async context
+manager that yields the same instance and does not close it. Connections are now
+kept alive between calls, which also removes a TLS handshake from every request.
+
+## 46. Nothing could reach Supabase from a new deployment
+
+Every outbound call from a freshly deployed function failed at the TCP connect,
+before any credential was checked:
+
+```
+httpx.ConnectError: [Errno 16] Device or resource busy
+```
+
+The symptom was misleading throughout. `/health` returned `healthy` because it
+only inspects configuration and makes no network call. The Supabase project was
+running, the keys were valid, and the identical request from a laptop succeeded.
+Only calls made from inside the deployed function failed.
+
+Three changes, each addressing a separate part of it:
+
+**The HTTP client.** `supabase.py` created a fresh `httpx.AsyncClient` at each of
+its seventeen call sites, and `gemini.py` did the same, so every request built
+and tore down a connection pool. That exhausts the sandbox's socket handles.
+A single module-level client is not the answer either, because a serverless
+invocation may run on a different event loop from the one that created it. The
+client is now keyed by event loop, its transport retries connection failures,
+and a `ConnectError` discards the pooled client so the next call starts clean.
+
+**The deployment config.** `vercel.json` used the legacy `builds` format, which
+no longer routes to the same runtime as the existing production build. Replaced
+with a `rewrites` entry and an explicit `api/index.py` entry point. The
+application itself is untouched and still runs locally with
+`uvicorn app.main:app`.
+
+**Error visibility.** An unhandled exception reached the client as a bare
+"Internal Server Error" with an empty body, which is why this took so long to
+place. A handler now returns the exception type, its message and the path, and
+logs the traceback.
+
+## 47. CORS blocked half the API
+
+`allow_methods` listed only GET, POST and OPTIONS, while the API uses PUT for
+crop updates and DELETE for ledger and scan removal. The Android client is
+unaffected, since CORS is a browser rule, but any web client would have failed
+at the preflight check. All the methods the API actually serves are now listed.
