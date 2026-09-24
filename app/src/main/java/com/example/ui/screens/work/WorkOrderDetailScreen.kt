@@ -24,11 +24,16 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.UserRole
 import com.example.data.model.WorkOrderDetail
+import com.example.data.model.WorkMessage
 import com.example.data.model.WorkPayment
 import com.example.data.model.WorkProof
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.WorkViewModel
 import com.example.util.LocalAppLanguage
+import com.example.util.VoiceInputManager
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun WorkOrderDetailScreen(
@@ -38,6 +43,9 @@ fun WorkOrderDetailScreen(
 ) {
     val isUrdu = LocalAppLanguage.current.isUrdu
     val detail by workViewModel.detail.collectAsState()
+    val messages by workViewModel.messages.collectAsState()
+    val viewerId by workViewModel.viewerId.collectAsState()
+    val isSending by workViewModel.isSending.collectAsState()
     val isLoading by workViewModel.isLoading.collectAsState()
     val isCapturing by workViewModel.isCapturing.collectAsState()
 
@@ -251,6 +259,35 @@ fun WorkOrderDetailScreen(
                     canConfirm = !isLandowner && d.payments[index].status == "pending",
                     isUrdu = isUrdu,
                     onConfirm = { received -> workViewModel.confirmPayment(d.payments[index].id, received) }
+                )
+            }
+
+            // --- messages ---------------------------------------------------
+            item {
+                Column {
+                    Text(
+                        if (isUrdu) "گفتگو" else "Messages",
+                        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextSecondary
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        if (isUrdu)
+                            "یہ باتیں اسی کام کے ساتھ محفوظ رہتی ہیں، ثبوت اور حساب کے ساتھ۔"
+                        else
+                            "These stay attached to this job, beside its evidence and its account.",
+                        fontSize = 11.sp, color = TextSecondary, lineHeight = 15.sp
+                    )
+                }
+            }
+            items(messages.size) { index ->
+                MessageRow(messages[index], viewerId, isUrdu)
+            }
+            item {
+                MessageComposer(
+                    isUrdu = isUrdu,
+                    isSending = isSending,
+                    enabled = d.order.status != "cancelled",
+                    onSend = { workViewModel.sendMessage(d.order.id, it) }
                 )
             }
         }
@@ -753,6 +790,148 @@ private fun ChipRow(options: List<Pair<String, String>>, selected: String, onSel
                     maxLines = 1
                 )
             }
+        }
+    }
+}
+
+
+@Composable
+private fun MessageRow(message: WorkMessage, viewerId: String, isUrdu: Boolean) {
+    // System entries are the record of what happened, so they sit centred and
+    // plain rather than looking like something either party said.
+    if (message.isSystem) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            Surface(shape = RoundedCornerShape(8.dp), color = PaleGreenBg) {
+                Text(
+                    message.body,
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+        }
+        return
+    }
+
+    val mine = message.senderId == viewerId
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
+    ) {
+        Surface(
+            shape = RoundedCornerShape(
+                topStart = 14.dp, topEnd = 14.dp,
+                bottomStart = if (mine) 14.dp else 4.dp,
+                bottomEnd = if (mine) 4.dp else 14.dp
+            ),
+            color = if (mine) EmeraldGreen else SoftWhite,
+            border = if (mine) null else BorderStroke(1.dp, BorderLight),
+            modifier = Modifier.widthIn(max = 280.dp)
+        ) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                Text(
+                    message.body,
+                    fontSize = 13.sp,
+                    color = if (mine) Color.White else TextPrimary,
+                    lineHeight = 18.sp
+                )
+                Text(
+                    message.createdAt.take(16).replace("T", "  "),
+                    fontSize = 9.5.sp,
+                    color = if (mine) Color.White.copy(alpha = 0.75f) else TextMuted
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageComposer(
+    isUrdu: Boolean,
+    isSending: Boolean,
+    enabled: Boolean,
+    onSend: (String) -> Unit
+) {
+    var text by remember { mutableStateOf("") }
+    var listening by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val voice = remember { VoiceInputManager(context) }
+
+    DisposableEffect(Unit) { onDispose { voice.stop() } }
+
+    // Spoken words land in the box for review, not straight into the thread,
+    // which matters for a contractor who may not read back easily.
+    fun listen() {
+        listening = true
+        voice.start(
+            isUrdu = isUrdu,
+            callbacks = object : VoiceInputManager.Callbacks {
+                override fun onPartial(partial: String) { text = partial }
+                override fun onFinal(final: String) { text = final; listening = false }
+                override fun onError(message: String) { listening = false }
+                override fun onEndOfSpeech() {}
+            }
+        )
+    }
+
+    val micPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) listen() }
+
+    Row(
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            enabled = enabled,
+            placeholder = {
+                Text(
+                    if (isUrdu) "پیغام لکھیں یا بولیں" else "Write or speak a message",
+                    fontSize = 12.5.sp, color = TextMuted
+                )
+            },
+            maxLines = 4,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary,
+                cursorColor = EmeraldGreen, focusedBorderColor = EmeraldGreen,
+                unfocusedBorderColor = BorderSlate,
+                focusedContainerColor = SoftWhite, unfocusedContainerColor = SoftWhite
+            ),
+            modifier = Modifier.weight(1f)
+        )
+
+        IconButton(
+            onClick = {
+                if (listening) {
+                    voice.stop(); listening = false
+                } else if (voice.hasPermission()) {
+                    listen()
+                } else {
+                    micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                }
+            },
+            enabled = enabled
+        ) {
+            Icon(
+                if (listening) Icons.Filled.Mic else Icons.Filled.MicNone,
+                contentDescription = null,
+                tint = if (listening) ErrorRed else EmeraldGreen
+            )
+        }
+
+        IconButton(
+            onClick = { onSend(text); text = "" },
+            enabled = enabled && !isSending && text.isNotBlank()
+        ) {
+            Icon(
+                Icons.Default.Send,
+                contentDescription = null,
+                tint = if (text.isNotBlank()) EmeraldGreen else TextMuted
+            )
         }
     }
 }

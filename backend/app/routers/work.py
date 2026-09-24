@@ -70,6 +70,20 @@ def _require(condition, message, code=409):
         raise HTTPException(code, message)
 
 
+async def _system_note(order_id, text):
+    """Record what just happened, so the history reads itself back.
+
+    A failure here must not undo the action that triggered it, so the write is
+    deliberately not allowed to raise.
+    """
+    await supabase.insert("work_messages", {
+        "work_order_id": order_id,
+        "sender_id": None,
+        "kind": "system",
+        "body": text,
+    })
+
+
 async def _set_status(order, **fields):
     code, rows = await supabase.update(
         "work_orders",
@@ -235,7 +249,31 @@ async def list_orders(user: dict = Depends(require_user)):
     })
     if code >= 400:
         raise HTTPException(code, str(orders))
-    return {"success": True, "role": role, "orders": await _with_balances(orders)}
+
+    orders = await _with_balances(orders)
+    orders = await _with_unread_for(orders, user["id"], role)
+    return {"success": True, "role": role, "orders": orders}
+
+
+async def _with_unread_for(orders, user_id, role):
+    """Attach each job's unread message count. A reader never sees their own
+    message counted as unread."""
+    if not orders:
+        return orders
+    ids = ",".join(o["id"] for o in orders)
+    column = "read_by_landowner_at" if role == "landowner" else "read_by_contractor_at"
+    code, rows = await supabase.select("work_messages", {
+        "select": "work_order_id,sender_id",
+        "work_order_id": f"in.({ids})",
+        column: "is.null",
+    })
+    counts: dict[str, int] = {}
+    if code < 400:
+        for m in rows:
+            if m.get("sender_id") == user_id:
+                continue
+            counts[m["work_order_id"]] = counts.get(m["work_order_id"], 0) + 1
+    return [{**o, "unread_messages": counts.get(o["id"], 0)} for o in orders]
 
 
 @router.get("/work-orders/{order_id}")
@@ -277,7 +315,9 @@ async def accept_order(order_id: str, user: dict = Depends(require_user)):
     order = await _order_for(user, order_id)
     _require(user["id"] == order["contractor_id"], "Only the assigned contractor can accept", 403)
     _require(order["status"] == "proposed", "This job is no longer awaiting acceptance")
-    return {"success": True, "order": await _set_status(order, status="accepted", accepted_at=_now())}
+    updated = await _set_status(order, status="accepted", accepted_at=_now())
+    await _system_note(order_id, f"Contractor accepted the job at {order['rate_per_acre']} per acre.")
+    return {"success": True, "order": updated}
 
 
 @router.post("/work-orders/{order_id}/decline")
@@ -347,7 +387,9 @@ async def submit_order(order_id: str, user: dict = Depends(require_user)):
     stages = {p["stage"] for p in (proofs if code < 400 else [])}
     _require("after" in stages, "Add at least one photo of the finished work before submitting", 422)
 
-    return {"success": True, "order": await _set_status(order, status="submitted", submitted_at=_now())}
+    updated = await _set_status(order, status="submitted", submitted_at=_now())
+    await _system_note(order_id, "Contractor submitted the work for review.")
+    return {"success": True, "order": updated}
 
 
 class ReviewIn(BaseModel):
@@ -376,7 +418,19 @@ async def review_order(order_id: str, x: ReviewIn, user: dict = Depends(require_
         raise HTTPException(422, "Decision must be approved, partial or disputed")
 
     fields.update(review_note=(x.note or "").strip() or None, reviewed_at=_now())
-    return {"success": True, "order": await _set_status(order, **fields)}
+    updated = await _set_status(order, **fields)
+
+    if x.decision == "approved":
+        note = f"Landowner approved all {area} acres."
+    elif x.decision == "partial":
+        note = f"Landowner verified {x.verified_acres} of {area} acres."
+    else:
+        note = "Landowner raised a dispute."
+    if (x.note or "").strip():
+        note += f" Note: {x.note.strip()}"
+    await _system_note(order_id, note)
+
+    return {"success": True, "order": updated}
 
 
 # ---------------------------------------------------------------------------
@@ -440,7 +494,16 @@ async def confirm_payment(payment_id: str, x: ConfirmIn, user: dict = Depends(re
     if status == "confirmed":
         order = await _one("work_orders", {"id": f"eq.{payment['work_order_id']}"})
         await _post_to_ledgers(order, payment)
+        await _system_note(
+            order["id"],
+            f"Contractor confirmed receiving {payment['amount']} by {payment['method']}.",
+        )
         await _close_if_settled(order)
+    else:
+        await _system_note(
+            payment["work_order_id"],
+            f"Contractor reported not receiving {payment['amount']}.",
+        )
 
     return {"success": True, "status": status}
 
@@ -468,3 +531,62 @@ async def _close_if_settled(order):
     balance = await _one("work_order_balances", {"work_order_id": f"eq.{order['id']}"})
     if balance and float(balance.get("balance") or 0) <= 0:
         await supabase.update("work_orders", {"id": f"eq.{order['id']}"}, {"status": "closed"})
+
+
+
+# ---------------------------------------------------------------------------
+# messages
+# ---------------------------------------------------------------------------
+class MessageIn(BaseModel):
+    body: str
+
+
+def _read_column(order, user_id):
+    return ("read_by_landowner_at" if user_id == order["landowner_id"]
+            else "read_by_contractor_at")
+
+
+@router.get("/work-orders/{order_id}/messages")
+async def list_messages(order_id: str, user: dict = Depends(require_user)):
+    """Return the conversation and mark it read for whoever is reading it."""
+    order = await _order_for(user, order_id)
+
+    code, rows = await supabase.select("work_messages", {
+        "select": "*", "work_order_id": f"eq.{order_id}", "order": "created_at.asc",
+    })
+    if code >= 400:
+        raise HTTPException(code, str(rows))
+
+    column = _read_column(order, user["id"])
+    unread = [m for m in rows if not m.get(column)]
+    if unread:
+        await supabase.update(
+            "work_messages",
+            {"work_order_id": f"eq.{order_id}", column: "is.null"},
+            {column: _now()},
+        )
+
+    return {"success": True, "messages": rows, "viewer_id": user["id"]}
+
+
+@router.post("/work-orders/{order_id}/messages")
+async def send_message(order_id: str, x: MessageIn, user: dict = Depends(require_user)):
+    order = await _order_for(user, order_id)
+    body = (x.body or "").strip()
+    _require(bool(body), "Write a message first", 422)
+    _require(len(body) <= 2000, "Message is too long", 422)
+    _require(order["status"] != "cancelled", "This job has been cancelled")
+
+    # The sender's own side is marked read at the moment of sending, so their
+    # own message never comes back as unread to them.
+    payload = {
+        "work_order_id": order_id,
+        "sender_id": user["id"],
+        "kind": "text",
+        "body": body,
+        _read_column(order, user["id"]): _now(),
+    }
+    code, rows = await supabase.insert_returning("work_messages", payload)
+    if code >= 400:
+        raise HTTPException(code, str(rows))
+    return {"success": True, "message": rows[0]}

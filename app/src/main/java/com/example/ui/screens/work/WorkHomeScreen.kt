@@ -302,15 +302,41 @@ private fun WorkOrderCard(order: WorkOrder, isUrdu: Boolean, onClick: () -> Unit
                     " × ${rupees(order.ratePerAcre)}  =  ${rupees(order.totalAmount)}",
                 fontSize = 12.5.sp, color = TextSecondary
             )
-            order.balance?.let { b ->
-                if (b.payable > 0 || b.paid > 0) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = (if (isUrdu) "باقی: " else "Balance: ") + rupees(b.balance),
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (b.balance > 0) ErrorRed else SuccessGreen
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    order.balance?.let { b ->
+                        if (b.payable > 0 || b.paid > 0) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = (if (isUrdu) "باقی: " else "Balance: ") + rupees(b.balance),
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (b.balance > 0) ErrorRed else SuccessGreen
+                            )
+                        }
+                    }
+                }
+                if (order.unreadMessages > 0) {
+                    Surface(shape = RoundedCornerShape(10.dp), color = EmeraldGreen) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.ChatBubble,
+                                contentDescription = null,
+                                tint = androidx.compose.ui.graphics.Color.White,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                order.unreadMessages.toString(),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = androidx.compose.ui.graphics.Color.White
+                            )
+                        }
+                    }
                 }
             }
         }

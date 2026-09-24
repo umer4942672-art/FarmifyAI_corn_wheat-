@@ -619,3 +619,35 @@ alter table public.profiles
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', false)
 on conflict (id) do update set public = false;
+
+
+-- ------------------------------------------------------------------------------
+-- 15. WORK ORDER MESSAGES
+-- ------------------------------------------------------------------------------
+create table if not exists public.work_messages (
+  id            uuid primary key default gen_random_uuid(),
+  work_order_id uuid not null references public.work_orders(id) on delete cascade,
+  -- Null for system entries, which belong to no one.
+  sender_id     uuid references public.profiles(id) on delete set null,
+  kind          text not null default 'text' check (kind in ('text', 'system')),
+  body          text not null check (length(trim(body)) > 0),
+  created_at    timestamptz not null default now(),
+  -- Read marks are per side, so each party sees its own unread count.
+  read_by_landowner_at  timestamptz,
+  read_by_contractor_at timestamptz
+);
+
+create index if not exists work_messages_order_idx
+  on public.work_messages (work_order_id, created_at);
+
+alter table public.work_messages enable row level security;
+
+drop policy if exists "Parties can view messages on their work" on public.work_messages;
+create policy "Parties can view messages on their work" on public.work_messages
+  for select using (
+    exists (
+      select 1 from public.work_orders w
+      where w.id = work_order_id
+        and (auth.uid() = w.landowner_id or auth.uid() = w.contractor_id)
+    )
+  );

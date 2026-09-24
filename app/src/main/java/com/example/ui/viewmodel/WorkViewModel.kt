@@ -8,6 +8,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.model.ContractorLink
 import com.example.data.model.UserRole
 import com.example.data.model.WorkOrder
+import com.example.data.model.WorkMessage
 import com.example.data.model.WorkOrderDetail
 import com.example.data.repository.CaptureOutcome
 import com.example.data.repository.WorkRepository
@@ -49,6 +50,15 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _messages = MutableStateFlow<List<WorkMessage>>(emptyList())
+    val messages: StateFlow<List<WorkMessage>> = _messages.asStateFlow()
+
+    private val _viewerId = MutableStateFlow("")
+    val viewerId: StateFlow<String> = _viewerId.asStateFlow()
+
+    private val _isSending = MutableStateFlow(false)
+    val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
 
     private val _isCapturing = MutableStateFlow(false)
     val isCapturing: StateFlow<Boolean> = _isCapturing.asStateFlow()
@@ -127,11 +137,36 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
     fun openOrder(orderId: String) {
         _selectedOrderId.value = orderId
         loadDetail(orderId)
+        loadMessages(orderId)
     }
 
     fun closeOrder() {
         _selectedOrderId.value = null
         _detail.value = null
+        _messages.value = emptyList()
+        // Opening the thread marks it read on the server, so the list has to be
+        // refreshed or it keeps showing a badge that is no longer true.
+        viewModelScope.launch { api.listOrders().onSuccess { _orders.value = it } }
+    }
+
+    private fun loadMessages(orderId: String) {
+        viewModelScope.launch {
+            api.listMessages(orderId).onSuccess { (list, viewer) ->
+                _messages.value = list
+                _viewerId.value = viewer
+            }
+        }
+    }
+
+    fun sendMessage(orderId: String, body: String) {
+        val text = body.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch {
+            _isSending.value = true
+            val r = api.sendMessage(orderId, text)
+            if (r.isSuccess) loadMessages(orderId) else say(r.exceptionOrNull()?.message ?: "Could not send")
+            _isSending.value = false
+        }
     }
 
     private fun loadDetail(orderId: String) {
@@ -145,7 +180,11 @@ class WorkViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun refreshCurrent() {
-        _selectedOrderId.value?.let { loadDetail(it) }
+        _selectedOrderId.value?.let {
+            loadDetail(it)
+            // Each action writes a system note, so the thread is reloaded with it.
+            loadMessages(it)
+        }
         viewModelScope.launch { api.listOrders().onSuccess { _orders.value = it } }
     }
 

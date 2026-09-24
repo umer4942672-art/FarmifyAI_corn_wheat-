@@ -9,6 +9,8 @@ import com.example.data.model.parseBalance
 import com.example.data.model.parseLink
 import com.example.data.model.parsePayment
 import com.example.data.model.parseProof
+import com.example.data.model.WorkMessage
+import com.example.data.model.parseMessage
 import com.example.data.model.parseWorkOrder
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -173,6 +175,18 @@ class WorkApiService(context: Context) {
             .put("transaction_ref", transactionRef)
             .put("note", note)
     ).map { }
+
+    // --- messages ---------------------------------------------------------
+    /** Loads the thread. The server marks it read for whoever asked. */
+    suspend fun listMessages(orderId: String): Result<Pair<List<WorkMessage>, String>> =
+        get("/api/work-orders/$orderId/messages").map { o ->
+            val arr = o.optJSONArray("messages")
+            val messages = (0 until (arr?.length() ?: 0)).map { parseMessage(arr!!.getJSONObject(it)) }
+            messages to o.optString("viewer_id")
+        }
+
+    suspend fun sendMessage(orderId: String, body: String): Result<Unit> =
+        post("/api/work-orders/$orderId/messages", JSONObject().put("body", body)).map { }
 
     suspend fun confirmPayment(paymentId: String, received: Boolean): Result<Unit> =
         post("/api/payments/$paymentId/confirm", JSONObject().put("received", received)).map { }

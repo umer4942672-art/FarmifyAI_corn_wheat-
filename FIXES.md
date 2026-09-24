@@ -970,3 +970,36 @@ the session token, since those links carry their own authorisation and the
 token has no business being sent to the storage host.
 
 Run `supabase/migrations/003_profile_avatar.sql` before deploying this.
+
+---
+
+# Eighteenth pass — messages attached to a job
+
+## 51. The two parties had nowhere to talk inside the record
+
+A landowner and contractor could agree a job, submit evidence and settle
+payment, but any discussion happened in a messaging app outside the system.
+When they later disagreed, the conversation that explained the disagreement was
+somewhere else, and could be deleted.
+
+This is deliberately not a general chat. Every message belongs to one work
+order, so the exchange sits beside that job's photos, GPS evidence and money.
+A general chat would only duplicate WhatsApp, which both already have.
+
+`work_messages` holds both typed messages and **system entries** written by the
+backend at each transition: the rate accepted, the work submitted, the acres
+verified, the payment confirmed. A readable history therefore builds itself
+even when neither party types anything, and those entries carry no sender so
+they cannot be mistaken for something a person said.
+
+Read marks are per side, so each party sees its own unread count, and a sender
+never sees their own message counted as unread. Opening a thread marks it read
+on the server and refreshes the list, so a badge never lingers after it has
+been seen.
+
+The composer takes voice input, reusing the recogniser built for the advisory
+chat. Spoken words land in the box for review rather than being sent straight
+away, which matters for a contractor who may not read back easily.
+
+Run `supabase/migrations/004_work_messages.sql` before deploying this.
+The backend suite covers it: 40 checks, all passing.

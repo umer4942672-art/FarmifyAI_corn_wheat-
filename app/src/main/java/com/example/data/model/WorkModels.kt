@@ -52,6 +52,7 @@ data class WorkOrder(
     val fieldLat: Double?,
     val fieldLng: Double?,
     val verifiedAcres: Double?,
+    val unreadMessages: Int,
     val reviewNote: String,
     val status: String,
     val createdAt: String,
@@ -83,6 +84,16 @@ data class WorkPayment(
     val status: String,
     val createdAt: String
 )
+
+data class WorkMessage(
+    val id: String,
+    val senderId: String,
+    val kind: String,
+    val body: String,
+    val createdAt: String
+) {
+    val isSystem get() = kind == "system"
+}
 
 data class WorkOrderDetail(
     val viewerRole: UserRole,
@@ -133,6 +144,7 @@ fun parseWorkOrder(o: JSONObject): WorkOrder = WorkOrder(
     fieldLat = o.num("field_lat"),
     fieldLng = o.num("field_lng"),
     verifiedAcres = o.num("verified_acres"),
+    unreadMessages = (o.num("unread_messages") ?: 0.0).toInt(),
     reviewNote = o.str("review_note"),
     status = o.str("status"),
     createdAt = o.str("created_at"),
@@ -175,3 +187,11 @@ fun parseLink(o: JSONObject): ContractorLink {
         otherParty = PartyInfo(p.str("name"), p.str("phone"), p.str("email"))
     )
 }
+
+fun parseMessage(o: JSONObject): WorkMessage = WorkMessage(
+    id = o.str("id"),
+    senderId = o.str("sender_id"),
+    kind = o.str("kind"),
+    body = o.str("body"),
+    createdAt = o.str("created_at")
+)

@@ -22,7 +22,8 @@ class FakeSupabase:
 
     def __init__(self):
         self.t = {k: [] for k in ["profiles", "contractor_links", "work_orders",
-                                  "work_proofs", "work_payments", "khata_transactions"]}
+                                  "work_proofs", "work_payments", "khata_transactions",
+                                  "work_messages"]}
 
     # --- query helpers -----------------------------------------------------
     def _match(self, row, params):
@@ -36,6 +37,8 @@ class FakeSupabase:
             if op == "neq" and str(cell) == val:
                 return False
             if op == "in" and str(cell) not in val.strip("()").split(","):
+                return False
+            if op == "is" and val == "null" and cell is not None:
                 return False
         return True
 
@@ -69,11 +72,20 @@ class FakeSupabase:
             row["status"] = "pending"
         if table == "work_proofs":
             row["uploaded_at"] = payload["captured_at"]
+        if table == "work_messages":
+            row.setdefault("sender_id", None)
+            row.setdefault("read_by_landowner_at", None)
+            row.setdefault("read_by_contractor_at", None)
         self.t[table].append(row)
         return 201, [dict(row)]
 
     async def insert(self, table, payload):
-        self.t[table].append({"id": str(uuid.uuid4()), **payload})
+        row = {"id": str(uuid.uuid4()), **payload}
+        if table == "work_messages":
+            row.setdefault("sender_id", None)
+            row.setdefault("read_by_landowner_at", None)
+            row.setdefault("read_by_contractor_at", None)
+        self.t[table].append(row)
         return 201, ""
 
     async def update(self, table, params, payload):
@@ -211,6 +223,46 @@ r = c.post(f"/api/work-orders/{oid}/payments",
 c.post(f"/api/payments/{r.json()['payment']['id']}/confirm", json={"received": True}, headers=H("tok_ctr"))
 status = c.get(f"/api/work-orders/{oid}", headers=H("tok_owner")).json()["order"]["status"]
 check("job closes automatically once settled", status == "closed")
+
+# --- messages -------------------------------------------------------------
+r = c.post(f"/api/work-orders/{oid}/messages", json={"body": "  "}, headers=H("tok_owner"))
+check("empty message rejected", r.status_code == 422)
+
+r = c.post(f"/api/work-orders/{oid}/messages", json={"body": "Kal subah shuru karein"},
+           headers=H("tok_owner"))
+check("landowner sends a message", r.status_code == 200)
+
+r = c.post(f"/api/work-orders/{oid}/messages", json={"body": "Theek hai"}, headers=H("tok_other"))
+check("outsider cannot message on someone else's job", r.status_code == 404)
+
+msgs = c.get(f"/api/work-orders/{oid}/messages", headers=H("tok_ctr")).json()["messages"]
+system = [m for m in msgs if m["kind"] == "system"]
+check(f"system notes recorded ({len(system)} of them)", len(system) >= 4)
+check("accepted note present", any("accepted the job" in m["body"] for m in system))
+check("review note records verified acres", any("verified 6.0" in m["body"] or "verified 6" in m["body"] for m in system))
+check("payment note present", any("confirmed receiving" in m["body"] for m in system))
+check("typed message present", any(m["body"] == "Kal subah shuru karein" for m in msgs))
+
+orders = c.get("/api/work-orders", headers=H("tok_ctr")).json()["orders"]
+this = next(o for o in orders if o["id"] == oid)
+check("unread clears once the contractor has read", this["unread_messages"] == 0)
+
+c.post(f"/api/work-orders/{oid}/messages", json={"body": "Ek aur baat"}, headers=H("tok_owner"))
+orders = c.get("/api/work-orders", headers=H("tok_ctr")).json()["orders"]
+this = next(o for o in orders if o["id"] == oid)
+check("new message shows as unread to the other side", this["unread_messages"] == 1)
+
+# The landowner has system notes waiting until they open the thread, which is
+# correct. Read it first, then send, and only their own message is in play.
+c.get(f"/api/work-orders/{oid}/messages", headers=H("tok_owner"))
+c.post(f"/api/work-orders/{oid}/messages", json={"body": "Aur ek"}, headers=H("tok_owner"))
+orders = c.get("/api/work-orders", headers=H("tok_owner")).json()["orders"]
+this = next(o for o in orders if o["id"] == oid)
+check("sender does not see their own message as unread", this["unread_messages"] == 0)
+
+orders = c.get("/api/work-orders", headers=H("tok_ctr")).json()["orders"]
+this = next(o for o in orders if o["id"] == oid)
+check("the other side sees both new messages", this["unread_messages"] == 2)
 
 passed = sum(1 for _, ok in checks if ok)
 print(f"\n{passed}/{len(checks)} checks passed")
