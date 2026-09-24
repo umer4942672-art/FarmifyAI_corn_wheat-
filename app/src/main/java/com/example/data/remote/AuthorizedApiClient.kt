@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /** Plain result holder so callers never have to manage an OkHttp Response body. */
@@ -99,5 +100,24 @@ class AuthorizedApiClient(context: Context) {
             .readTimeout(90, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
             .build()
+
+        /**
+         * Fetches a URL straight to a file, without attaching the session token.
+         *
+         * Used for signed storage links, which carry their own short-lived
+         * authorisation; sending the bearer token to storage as well would leak
+         * it to a host that has no need for it.
+         */
+        fun download(url: String, destination: File) {
+            val request = Request.Builder().url(url).get().build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Download failed (${response.code})")
+                }
+                val body = response.body ?: throw IllegalStateException("Empty response")
+                destination.parentFile?.mkdirs()
+                destination.outputStream().use { out -> body.byteStream().copyTo(out) }
+            }
+        }
     }
 }

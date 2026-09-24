@@ -148,6 +148,64 @@ class SupabaseDataSyncService(context: Context) {
     }
 
     /**
+     * Sends the farmer's profile photo to private cloud storage.
+     *
+     * The photo previously lived only in the app's files directory, so it was
+     * lost on reinstall and did not follow the farmer to a new phone the way
+     * their ledger and scan history did.
+     */
+    suspend fun uploadAvatar(filePath: String): Result<String> = withContext(Dispatchers.IO) {
+        if (!session.hasSession()) return@withContext Result.failure(Exception("No active session"))
+        val file = File(filePath)
+        if (!file.exists()) return@withContext Result.failure(Exception("Photo file not found"))
+
+        val response = api.call { token ->
+            val multipart = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("file", file.name, file.asRequestBody("image/jpeg".toMediaType()))
+                .build()
+            Request.Builder()
+                .url(ApiConfig.endpoint("/api/profile/avatar"))
+                .header("Authorization", "Bearer $token")
+                .post(multipart)
+                .build()
+        } ?: return@withContext Result.failure(Exception("Photo upload failed: no session or network"))
+
+        if (!response.isSuccessful) {
+            return@withContext Result.failure(Exception(response.errorDetail("Photo upload failed")))
+        }
+        Result.success(response.json().optString("path"))
+    }
+
+    /** Downloads the stored profile photo, returning the local file it was written to. */
+    suspend fun downloadAvatar(destination: File): Result<String> = withContext(Dispatchers.IO) {
+        if (!session.hasSession()) return@withContext Result.failure(Exception("No active session"))
+
+        val meta = api.call { token ->
+            Request.Builder()
+                .url(ApiConfig.endpoint("/api/profile/avatar"))
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json")
+                .get()
+                .build()
+        } ?: return@withContext Result.failure(Exception("Could not reach the server"))
+
+        if (!meta.isSuccessful) {
+            return@withContext Result.failure(Exception(meta.errorDetail("Could not read the photo")))
+        }
+        val url = meta.json().optString("url").takeIf { it.isNotBlank() && it != "null" }
+            ?: return@withContext Result.failure(Exception("No profile photo stored"))
+
+        // The signed URL points straight at storage, so it carries its own
+        // authorisation and must not be sent the session token.
+        runCatching {
+            AuthorizedApiClient.download(url, destination)
+        }.fold(
+            onSuccess = { Result.success(destination.absolutePath) },
+            onFailure = { Result.failure(Exception(it.localizedMessage ?: "Photo download failed")) }
+        )
+    }
+
+    /**
      * Restores the signed-in farmer's cloud state (profile, crops, khata and
      * disease history) after a login on a new device or a fresh install.
      */

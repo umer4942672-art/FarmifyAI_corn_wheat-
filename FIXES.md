@@ -941,3 +941,32 @@ share a private key.
 
 `keystore.properties.example` documents the four values and the `keytool`
 command that creates the keystore.
+
+
+## 50. Profile photos never left the phone
+
+The profile photo was written to the app's private files directory and nowhere
+else. Unlike the ledger, crops and scan history, it was lost on reinstall and
+did not follow a farmer to a new phone. This was recorded as a limitation
+rather than fixed.
+
+Now stored in Supabase:
+
+- `profiles.avatar_path` holds the object path; the image itself goes to a
+  private `avatars` bucket, like the disease photos
+- `POST /api/profile/avatar` uploads it. The object path is fixed per user
+  (`{user_id}/avatar.jpg`), so a new photo replaces the old one instead of
+  leaving orphaned files in storage
+- `GET /api/profile/avatar` returns a short-lived signed URL for the caller's
+  own photo only
+- the upload happens after the local copy is written, so the photo appears
+  immediately and an offline farmer is never blocked from setting one
+- `restoreProfilePhoto()` runs as part of the existing cloud restore, and skips
+  the download when a local photo already exists, so a photo changed offline is
+  not overwritten by an older cloud copy
+
+`AuthorizedApiClient.download()` fetches signed storage URLs without attaching
+the session token, since those links carry their own authorisation and the
+token has no business being sent to the storage host.
+
+Run `supabase/migrations/003_profile_avatar.sql` before deploying this.

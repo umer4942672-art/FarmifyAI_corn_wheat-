@@ -340,6 +340,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val userKey = currentUserKey()
             if (userKey.isBlank()) return@launch
             val summary = cloudSyncRepository.restoreFromCloud(userKey)
+            // The profile photo lives in storage rather than a table, so it is
+            // fetched separately. It is skipped when a local photo already exists.
+            runCatching { userRepository.restoreProfilePhoto() }
             val restored = summary.khataRestored + summary.diseaseRestored
             if (showFeedback && summary.ok && restored > 0) {
                 _userFeedback.emit("کلاؤڈ سے $restored ریکارڈ بحال ہوئے (Restored $restored records from cloud)")

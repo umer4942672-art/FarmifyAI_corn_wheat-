@@ -606,3 +606,16 @@ create policy "Parties can view their payments" on public.work_payments
 insert into storage.buckets (id, name, public)
 values ('work-proofs', 'work-proofs', false)
 on conflict (id) do update set public = false;
+
+
+-- ------------------------------------------------------------------------------
+-- 14. PROFILE PHOTOS
+-- ------------------------------------------------------------------------------
+alter table public.profiles
+  add column if not exists avatar_path text;
+
+-- Private, like the disease images. Photos are served through short-lived
+-- signed URLs after the backend has confirmed ownership.
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', false)
+on conflict (id) do update set public = false;

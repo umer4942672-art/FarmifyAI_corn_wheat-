@@ -91,6 +91,52 @@ async def disease_image_url(path:str,user:dict=Depends(require_user)):
     if code>=400: raise HTTPException(code,str(data))
     return {'success':True,'url':data.get('url')}
 
+@router.post('/profile/avatar')
+async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(require_user)):
+    """Store a farmer's profile photo and record its path on their profile.
+
+    The object path is fixed per user rather than timestamped, so a new photo
+    overwrites the old one instead of leaving orphaned files behind.
+    """
+    if not (file.content_type or '').startswith('image/'):
+        raise HTTPException(400, 'Only image uploads are allowed')
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(413, 'Profile photo exceeds 5 MB')
+
+    object_path = f'{user["id"]}/avatar.jpg'
+    code, data = await supabase.upload_storage(
+        'avatars', object_path, content, file.content_type or 'image/jpeg'
+    )
+    if code >= 400:
+        raise HTTPException(code, str(data))
+
+    code, text = await supabase.update(
+        'profiles', {'id': f'eq.{user["id"]}'}, {'avatar_path': object_path}
+    )
+    if code >= 400:
+        raise HTTPException(code, str(text))
+    return {'success': True, 'path': object_path}
+
+
+@router.get('/profile/avatar')
+async def avatar_url(user: dict = Depends(require_user)):
+    """Return a short-lived link to the caller's own photo."""
+    code, rows = await supabase.select(
+        'profiles', {'select': 'avatar_path', 'id': f'eq.{user["id"]}', 'limit': '1'}
+    )
+    if code >= 400:
+        raise HTTPException(code, str(rows))
+    path = (rows[0].get('avatar_path') if rows else None) or ''
+    if not path:
+        return {'success': True, 'url': None, 'path': None}
+
+    code, data = await supabase.signed_url('avatars', path)
+    if code >= 400:
+        raise HTTPException(code, str(data))
+    return {'success': True, 'url': data.get('url'), 'path': path}
+
+
 @router.get('/sync/bootstrap')
 async def bootstrap(user:dict=Depends(require_user)):
     user_id=user['id']

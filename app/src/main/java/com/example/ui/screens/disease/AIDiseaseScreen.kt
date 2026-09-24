@@ -1167,6 +1167,7 @@ fun DiagnosisResultView(
     }
 }
 
+@Composable
 
 
 @Composable

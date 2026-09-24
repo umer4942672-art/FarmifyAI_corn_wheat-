@@ -11,6 +11,7 @@ import com.example.data.local.UserEntity
 import com.example.data.local.PasswordHasher
 import com.example.data.remote.ApiConfig
 import com.example.data.remote.SupabaseAuthService
+import android.util.Log
 import com.example.data.remote.SupabaseDataSyncService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -241,10 +242,43 @@ class UserRepository(
             val updated = active.copy(profilePhotoPath = destination.absolutePath)
             userDao.insertOrUpdateUser(updated)
             _profile.value = updated.toModel(isAuthenticated = true)
+
+            // Local first, exactly as the ledger works: the photo is usable
+            // straight away and the upload is a best effort. A failure here
+            // leaves the photo on the device and it is retried on the next
+            // change, so an offline farmer is never blocked from setting one.
+            runCatching { supabaseDataSync.uploadAvatar(destination.absolutePath) }
+                .onFailure { Log.w(TAG, "Avatar upload failed: ${it.localizedMessage}") }
+
             Result.success(destination.absolutePath)
         } catch (e: Exception) {
             Result.failure(Exception(e.localizedMessage ?: "Could not save that photo"))
         }
+    }
+
+    /**
+     * Pulls the stored profile photo down after a sign-in on a new device.
+     *
+     * Does nothing when a local photo already exists, so a farmer who has just
+     * changed their photo offline does not have it overwritten by the older
+     * cloud copy.
+     */
+    suspend fun restoreProfilePhoto(): Boolean = withContext(Dispatchers.IO) {
+        val active = userDao.getActiveUserDirect() ?: return@withContext false
+        if (active.profilePhotoPath.isNotBlank() && File(active.profilePhotoPath).exists()) {
+            return@withContext false
+        }
+
+        val photosDir = File(appContext.filesDir, "profile_photos").apply { mkdirs() }
+        val destination = File(photosDir, "profile_restored.jpg")
+
+        val result = supabaseDataSync.downloadAvatar(destination)
+        if (result.isFailure) return@withContext false
+
+        val updated = active.copy(profilePhotoPath = destination.absolutePath)
+        userDao.insertOrUpdateUser(updated)
+        _profile.value = updated.toModel(isAuthenticated = true)
+        true
     }
 
     /** Reverts to the drawn avatar and deletes the stored file. */
@@ -473,5 +507,9 @@ private fun normalizePhone(value: String): String {
         digits.startsWith("92") -> "+$digits"
         digits.startsWith("0") -> "+92${digits.drop(1)}"
         else -> "+92$digits"
+    }
+
+    private companion object {
+        const val TAG = "UserRepository"
     }
 }
