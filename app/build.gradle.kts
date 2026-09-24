@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -63,11 +65,43 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  // Release signing. An unsigned APK cannot be installed on any device, which
+  // is why a release build could not be shared before this existed.
+  //
+  // Credentials come from keystore.properties, which stays out of version
+  // control. Without that file the release build falls back to the debug key so
+  // the project still builds on a fresh checkout; that APK installs and runs,
+  // but is for testing only and must not be published.
+  signingConfigs {
+    create("release") {
+      val keystorePropsFile = rootProject.file("keystore.properties")
+      if (keystorePropsFile.exists()) {
+        val props = Properties()
+        keystorePropsFile.inputStream().use { props.load(it) }
+        storeFile = rootProject.file(props.getProperty("storeFile"))
+        storePassword = props.getProperty("storePassword")
+        keyAlias = props.getProperty("keyAlias")
+        keyPassword = props.getProperty("keyPassword")
+      }
+    }
+  }
+
   buildTypes {
     release {
       isCrunchPngs = false
       isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+
+      val releaseSigning = signingConfigs.getByName("release")
+      signingConfig = if (releaseSigning.storeFile?.exists() == true) {
+        releaseSigning
+      } else {
+        logger.warn(
+          "FarmifyAI: keystore.properties not found, signing the release build " +
+            "with the debug key. Suitable for testing, not for distribution."
+        )
+        signingConfigs.getByName("debug")
+      }
     }
     debug {
     }

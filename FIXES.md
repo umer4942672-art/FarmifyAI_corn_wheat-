@@ -878,3 +878,66 @@ logs the traceback.
 crop updates and DELETE for ledger and scan removal. The Android client is
 unaffected, since CORS is a browser rule, but any web client would have failed
 at the preflight check. All the methods the API actually serves are now listed.
+
+---
+
+# Seventeenth pass — the microphone never listened
+
+## 48. Voice input was an animation, not a feature
+
+The advisory chat showed a microphone button that turned red and pulsed when
+tapped. It did nothing else:
+
+```kotlin
+onClick = { viewModel.setVoiceListening(!isListening) }
+```
+
+That call only flipped a boolean driving the animation. The codebase contained
+no `SpeechRecognizer`, no `RecognizerIntent`, and no `RECORD_AUDIO` permission.
+The panel that opened offered three canned questions to tap, so a farmer
+pressing the microphone and speaking got silence.
+
+Text-to-speech was real — answers could be read aloud — so sound came out of the
+app but never went in. For an application whose stated purpose is serving
+farmers with limited literacy, spoken input is closer to the point than spoken
+output.
+
+Now implemented in `util/VoiceInputManager.kt`:
+
+- recognition runs in the interface language, `ur-PK` or `en-PK`, with the other
+  offered as a fallback because farmers mix the two mid-sentence
+- partial results are shown live, so the speaker can see words being picked up
+  rather than speaking into silence
+- the silence window is widened to two seconds; the default cuts people off
+  part-way through a question
+- recognised text lands in the input box instead of being sent straight to the
+  assistant, so a misheard question can be corrected first
+- each failure gets its own message in both languages: no recogniser on the
+  device, language unavailable, no network, permission refused, nothing heard
+- the recogniser is released when the screen is left, rather than holding the
+  microphone open
+
+The manifest gained `RECORD_AUDIO` and a `<queries>` entry for
+`RecognitionService`. Without that entry `isRecognitionAvailable()` returns
+false on Android 11 and above no matter how capable the device is, which is a
+common reason this appears to fail on modern phones.
+
+**A limit worth stating:** Urdu speech recognition depends on the Google app
+installed on the device and usually needs a connection. Where it is missing the
+app now says so and invites the farmer to type, rather than failing silently.
+
+## 49. The release APK could not be installed on any phone
+
+`app/build.gradle.kts` defined a release build type with minification and
+ProGuard, but no `signingConfig`. `assembleRelease` therefore produced an
+**unsigned** APK, and Android refuses to install an unsigned package. Sharing
+that file with anyone gave "App not installed" with no useful explanation.
+
+A `release` signing config now reads from `keystore.properties`, which is
+git-ignored along with `*.jks` and `*.keystore`. When that file is absent the
+release build falls back to the debug key and logs a warning, so a fresh
+checkout still produces an installable APK for testing without anyone having to
+share a private key.
+
+`keystore.properties.example` documents the four values and the `keytool`
+command that creates the keystore.

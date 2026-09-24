@@ -314,6 +314,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _userFeedback = MutableSharedFlow<String>()
     val userFeedback: SharedFlow<String> = _userFeedback.asSharedFlow()
 
+    /** Surface a one-off message to the user, such as a voice input failure. */
+    fun showMessage(message: String) {
+        viewModelScope.launch { _userFeedback.emit(message) }
+    }
+
     init {
         viewModelScope.launch {
             khataRepository.initializeSampleDataIfEmpty()

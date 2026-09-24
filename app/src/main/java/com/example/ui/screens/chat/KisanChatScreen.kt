@@ -40,7 +40,12 @@ import com.example.data.model.ChatMessage
 import com.example.data.model.MessageSender
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.DisposableEffect
 import com.example.util.AppLanguage
+import com.example.util.VoiceInputManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -61,6 +66,62 @@ fun KisanChatScreen(
 
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+
+    // Voice input. The recogniser is tied to this screen, so leaving the screen
+    // releases the microphone rather than leaving it held open.
+    val context = LocalContext.current
+    val voiceInput = remember { VoiceInputManager(context) }
+    var partialSpeech by remember { mutableStateOf("") }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            voiceInput.stop()
+            viewModel.setVoiceListening(false)
+        }
+    }
+
+    fun beginListening() {
+        partialSpeech = ""
+        viewModel.setVoiceListening(true)
+        voiceInput.start(
+            isUrdu = isUrdu,
+            callbacks = object : VoiceInputManager.Callbacks {
+                override fun onPartial(text: String) {
+                    partialSpeech = text
+                }
+
+                // The recognised words go into the input box rather than
+                // straight to the assistant, so a misheard question can be
+                // corrected before it is sent.
+                override fun onFinal(text: String) {
+                    partialSpeech = ""
+                    viewModel.setVoiceListening(false)
+                    viewModel.onChatInputChange(text)
+                }
+
+                override fun onError(message: String) {
+                    partialSpeech = ""
+                    viewModel.setVoiceListening(false)
+                    viewModel.showMessage(message)
+                }
+
+                override fun onEndOfSpeech() {}
+            }
+        )
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            beginListening()
+        } else {
+            viewModel.showMessage(
+                if (isUrdu) "بولنے کے لیے مائیک کی اجازت درکار ہے۔"
+                else "Microphone permission is needed to speak your question."
+            )
+        }
+    }
 
     // Auto scroll on new messages
     LaunchedEffect(chatMessages.size, isAiThinking) {
@@ -167,7 +228,11 @@ fun KisanChatScreen(
         ) {
             VoiceListeningIndicator(
                 isUrdu = isUrdu,
-                onStop = { viewModel.setVoiceListening(false) },
+                partialText = partialSpeech,
+                onStop = {
+                    voiceInput.stop()
+                    viewModel.setVoiceListening(false)
+                },
                 onSendVoiceQuery = { voiceQuery ->
                     viewModel.setVoiceListening(false)
                     viewModel.sendChatMessage(voiceQuery)
@@ -299,7 +364,14 @@ fun KisanChatScreen(
                 VoiceMicButton(
                     isListening = isListening,
                     onClick = {
-                        viewModel.setVoiceListening(!isListening)
+                        if (isListening) {
+                            voiceInput.stop()
+                            viewModel.setVoiceListening(false)
+                        } else if (voiceInput.hasPermission()) {
+                            beginListening()
+                        } else {
+                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
                     }
                 )
 
@@ -667,6 +739,7 @@ fun VoiceMicButton(
 @Composable
 fun VoiceListeningIndicator(
     isUrdu: Boolean,
+    partialText: String,
     onStop: () -> Unit,
     onSendVoiceQuery: (String) -> Unit
 ) {
@@ -696,11 +769,28 @@ fun VoiceListeningIndicator(
                         .background(ErrorRed)
                 )
                 Text(
-                    text = if (isUrdu) "آواز سن رہا ہے... بولیں یا تجویز منتخب کریں" else "Listening... Speak or tap sample query",
+                    text = if (isUrdu) "آواز سن رہا ہے... بولیں" else "Listening... speak now",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
+            }
+
+            // Live transcript, so the farmer can see the words being picked up
+            // instead of speaking into silence.
+            if (partialText.isNotBlank()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+                ) {
+                    Text(
+                        text = partialText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    )
+                }
             }
 
             // Quick spoken voice prompt options
