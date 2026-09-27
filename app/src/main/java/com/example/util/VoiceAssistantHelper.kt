@@ -4,11 +4,29 @@ import android.content.Context
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
+/**
+ * Reads diagnoses, advisory replies and crop guidance aloud.
+ *
+ * The previous version swallowed every failure. If Urdu was unavailable it fell
+ * back to Hindi and then to English, handing Urdu script to an engine that
+ * cannot read it, so the farmer heard nothing useful and was told nothing.
+ * Worse, when the engine refused a request the speaking flag stayed true, which
+ * left the button stuck: the next tap counted as "stop" and nothing played
+ * again until the app restarted.
+ *
+ * This version checks the results the platform actually returns, reports what
+ * went wrong through [errors], and never pretends to speak Urdu with a voice
+ * that cannot.
+ */
 class VoiceAssistantHelper(private val context: Context) {
 
     private var textToSpeech: TextToSpeech? = null
@@ -20,159 +38,216 @@ class VoiceAssistantHelper(private val context: Context) {
     private val _currentSpeakingId = MutableStateFlow<String?>(null)
     val currentSpeakingId: StateFlow<String?> = _currentSpeakingId.asStateFlow()
 
+    /** Bilingual messages for the screen to surface. */
+    private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 2)
+    val errors: SharedFlow<String> = _errors.asSharedFlow()
+
     private var pendingSpeech: Triple<String, Boolean, String>? = null
+    private var initAttempts = 0
 
     init {
         initializeTts()
     }
 
     private fun initializeTts() {
-        try {
+        // A failed engine keeps failing; retrying without limit would spin on
+        // every tap of the speaker button.
+        if (initAttempts >= MAX_INIT_ATTEMPTS) return
+        initAttempts++
+
+        runCatching {
             textToSpeech = TextToSpeech(context.applicationContext) { status ->
                 if (status == TextToSpeech.SUCCESS) {
                     isInitialized = true
-                    setupTtsSettings()
-                    
-                    // Execute queued speech if user tapped audio before init completed
-                    pendingSpeech?.let { (text, isUrdu, utteranceId) ->
+                    configure()
+                    pendingSpeech?.let { (text, isUrdu, id) ->
                         pendingSpeech = null
-                        speak(text, isUrdu, utteranceId)
+                        speak(text, isUrdu, id)
                     }
                 } else {
                     isInitialized = false
+                    pendingSpeech = null
+                    report(
+                        "آواز کی سہولت اس فون پر دستیاب نہیں۔",
+                        "Text-to-speech is not available on this phone."
+                    )
                 }
             }
-        } catch (e: Exception) {
+        }.onFailure {
             isInitialized = false
+            Log.w(TAG, "TTS init failed: ${it.localizedMessage}")
+            report("آواز کی سہولت شروع نہیں ہو سکی۔", "Could not start text-to-speech.")
         }
     }
 
-    private fun setupTtsSettings() {
+    private fun configure() {
         val tts = textToSpeech ?: return
-        try {
-            tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {
-                    _isSpeaking.value = true
-                    _currentSpeakingId.value = utteranceId
-                }
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                _isSpeaking.value = true
+                _currentSpeakingId.value = utteranceId
+            }
 
-                override fun onDone(utteranceId: String?) {
-                    _isSpeaking.value = false
-                    _currentSpeakingId.value = null
-                }
+            override fun onDone(utteranceId: String?) = clearSpeaking()
 
-                override fun onError(utteranceId: String?) {
-                    _isSpeaking.value = false
-                    _currentSpeakingId.value = null
-                }
+            @Deprecated("Superseded by the two-argument form")
+            override fun onError(utteranceId: String?) = clearSpeaking()
 
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?, errorCode: Int) {
-                    _isSpeaking.value = false
-                    _currentSpeakingId.value = null
-                }
-            })
-
-            tts.setSpeechRate(0.92f)
-            tts.setPitch(1.0f)
-        } catch (e: Exception) {
-            // ignore
-        }
+            override fun onError(utteranceId: String?, errorCode: Int) {
+                Log.w(TAG, "Utterance $utteranceId failed with code $errorCode")
+                clearSpeaking()
+                report("آواز چلانے میں مسئلہ ہوا۔", "Playback failed.")
+            }
+        })
+        // A shade under natural pace. Advisory text carries doses and dates, and
+        // a farmer is often listening while doing something else.
+        tts.setSpeechRate(0.92f)
+        tts.setPitch(1.0f)
     }
 
-    fun speak(text: String, isUrdu: Boolean = false, utteranceId: String = "kisan_speech") {
-        if (text.isBlank()) return
+    private fun clearSpeaking() {
+        _isSpeaking.value = false
+        _currentSpeakingId.value = null
+    }
 
+    private fun report(urdu: String, english: String) {
+        _errors.tryEmit("$urdu\n$english")
+    }
+
+    /**
+     * Speaks [text], or stops if this same utterance is already playing.
+     *
+     * Returns false when nothing will be spoken, having already reported why.
+     */
+    fun speak(text: String, isUrdu: Boolean = false, utteranceId: String = "kisan_speech"): Boolean {
+        if (text.isBlank()) return false
+
+        // Tapping the speaker on the item already playing means stop.
         if (_isSpeaking.value && _currentSpeakingId.value == utteranceId) {
             stop()
-            return
+            return true
         }
 
-        if (!isInitialized || textToSpeech == null) {
+        val tts = textToSpeech
+        if (!isInitialized || tts == null) {
+            // The engine binds asynchronously, so an early tap is queued rather
+            // than dropped. Only one is held; the newest request wins.
             pendingSpeech = Triple(text, isUrdu, utteranceId)
-            // Retry init if null
-            if (textToSpeech == null) {
-                initializeTts()
-            }
-            return
+            if (tts == null) initializeTts()
+            return true
         }
 
-        try {
-            stop()
+        stop()
 
-            val tts = textToSpeech ?: return
+        if (!applyLanguage(tts, isUrdu)) return false
 
-            if (isUrdu) {
-                val urduPk = Locale("ur", "PK")
-                val urduGen = Locale("ur")
-                val hindi = Locale("hi", "IN")
+        val spoken = prepareText(text, isUrdu)
+        val params = Bundle().apply {
+            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
+        }
 
-                val resPk = try { tts.isLanguageAvailable(urduPk) } catch (e: Exception) { TextToSpeech.LANG_NOT_SUPPORTED }
-                if (resPk >= TextToSpeech.LANG_AVAILABLE) {
-                    tts.language = urduPk
-                } else {
-                    val resGen = try { tts.isLanguageAvailable(urduGen) } catch (e: Exception) { TextToSpeech.LANG_NOT_SUPPORTED }
-                    if (resGen >= TextToSpeech.LANG_AVAILABLE) {
-                        tts.language = urduGen
-                    } else {
-                        val resHi = try { tts.isLanguageAvailable(hindi) } catch (e: Exception) { TextToSpeech.LANG_NOT_SUPPORTED }
-                        if (resHi >= TextToSpeech.LANG_AVAILABLE) {
-                            tts.language = hindi
-                        } else {
-                            tts.language = Locale.ENGLISH
-                        }
-                    }
-                }
-            } else {
-                val engUs = Locale.US
-                if (tts.isLanguageAvailable(engUs) >= TextToSpeech.LANG_AVAILABLE) {
-                    tts.language = engUs
-                } else {
-                    tts.language = Locale.ENGLISH
-                }
+        // Set optimistically so the button reacts at once, then corrected below
+        // if the engine refuses the request.
+        _currentSpeakingId.value = utteranceId
+        _isSpeaking.value = true
+
+        val result = runCatching {
+            tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        }.getOrDefault(TextToSpeech.ERROR)
+
+        if (result == TextToSpeech.ERROR) {
+            // This is what used to leave the button stuck on "stop".
+            clearSpeaking()
+            report("آواز شروع نہیں ہو سکی۔", "Could not start playback.")
+            return false
+        }
+        return true
+    }
+
+    /**
+     * Selects a voice that can actually read the text.
+     *
+     * Urdu is missing on many phones. Falling through to English would hand
+     * Urdu script to a voice that cannot read it, so that is refused here and
+     * the farmer is told to read the text instead.
+     */
+    private fun applyLanguage(tts: TextToSpeech, isUrdu: Boolean): Boolean {
+        val wanted = if (isUrdu) {
+            listOf(Locale("ur", "PK"), Locale("ur"))
+        } else {
+            listOf(Locale.US, Locale.UK, Locale.ENGLISH)
+        }
+
+        for (locale in wanted) {
+            val availability = runCatching { tts.isLanguageAvailable(locale) }
+                .getOrDefault(TextToSpeech.LANG_NOT_SUPPORTED)
+            if (availability < TextToSpeech.LANG_AVAILABLE) continue
+
+            // isLanguageAvailable can still be followed by a refusal here, for
+            // instance when the voice is listed but its data is not downloaded.
+            val applied = runCatching { tts.setLanguage(locale) }
+                .getOrDefault(TextToSpeech.LANG_NOT_SUPPORTED)
+            if (applied >= TextToSpeech.LANG_AVAILABLE) return true
+
+            if (applied == TextToSpeech.LANG_MISSING_DATA) {
+                report(
+                    "آواز کا ڈیٹا انسٹال نہیں۔ فون کی ترتیبات سے انسٹال کریں۔",
+                    "The voice data is not installed. Install it from the phone's settings."
+                )
+                return false
             }
+        }
 
-            // Clean text for natural speech synthesis
-            val cleanText = text
-                .replace(Regex("[*#_`~>•]"), "")
+        if (isUrdu) {
+            report(
+                "اس فون پر اردو آواز موجود نہیں۔ متن پڑھ لیں یا انگریزی میں سنیں۔",
+                "Urdu speech is not available on this phone. Read the text, or switch to English."
+            )
+        } else {
+            report("آواز کی زبان دستیاب نہیں۔", "No usable voice is installed for this language.")
+        }
+        return false
+    }
+
+    /**
+     * Tidies text for speech.
+     *
+     * The currency and bullet substitutions are English-only; applying them to
+     * Urdu inserted English words into the middle of an Urdu sentence.
+     */
+    private fun prepareText(text: String, isUrdu: Boolean): String {
+        var out = text
+            .replace(Regex("[*#_`~>\u2022]"), "")
+            .replace("\n", ". ")
+
+        if (!isUrdu) {
+            out = out
                 .replace(Regex("Rs\\.?\\s*(\\d+)"), "$1 rupees")
                 .replace(Regex("PKR\\s*(\\d+)"), "$1 rupees")
                 .replace("- ", ", ")
-                .replace("\n", ". ")
-                .replace(Regex("\\s+"), " ")
-                .trim()
-
-            _currentSpeakingId.value = utteranceId
-            _isSpeaking.value = true
-
-            val params = Bundle()
-            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
-            tts.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
-        } catch (e: Exception) {
-            _isSpeaking.value = false
-            _currentSpeakingId.value = null
         }
+
+        return out.replace(Regex("\\s+"), " ").trim()
     }
 
     fun stop() {
-        try {
-            textToSpeech?.stop()
-        } catch (e: Exception) {
-            // ignore
-        } finally {
-            _isSpeaking.value = false
-            _currentSpeakingId.value = null
-        }
+        runCatching { textToSpeech?.stop() }
+        clearSpeaking()
     }
 
     fun shutdown() {
-        try {
+        runCatching {
             textToSpeech?.stop()
             textToSpeech?.shutdown()
-            textToSpeech = null
-            isInitialized = false
-        } catch (e: Exception) {
-            // ignore
         }
+        textToSpeech = null
+        isInitialized = false
+        pendingSpeech = null
+        clearSpeaking()
+    }
+
+    private companion object {
+        const val TAG = "VoiceAssistant"
+        const val MAX_INIT_ATTEMPTS = 3
     }
 }

@@ -53,6 +53,26 @@ pre-written.
 **Weather and mandi rates.** Seven-day forecasts from the device's own location,
 plus market rates per crop.
 
+**Landowner and contractor verification.** A landowner assigns a job at an agreed
+rate; the contractor accepts it, photographs the finished work, and submits it for
+review. Each photo carries its GPS fix and the time it was taken, and the balance
+owed is computed from the acres the landowner verified rather than the acres
+originally agreed. A payment counts only once the person receiving it confirms it,
+and confirmed payments post to both parties' ledgers.
+
+**Messages attached to a job.** Each work order carries its own thread, so
+discussion sits beside that job's evidence and money. System entries are written
+at every transition - rate accepted, work submitted, acres verified, payment
+confirmed - so a readable history builds itself.
+
+**Voice.** Questions can be spoken in Urdu or English in the advisory chat and in
+job messages; recognised words land in the input box for review rather than being
+sent straight away.
+
+**Four themes.** Light, Dark, Harvest and Midnight, each with its own surfaces and
+accents. Harvest also carries its own layout, including a floating navigation bar
+and drawn crop artwork.
+
 ---
 
 ## Architecture
@@ -148,12 +168,14 @@ app/                     Android client
 
 backend/
   app/
-    routers/             auth, sync, chat, data
+    routers/             auth, sync, chat, data, work
     services/            Supabase REST client, Gemini client, retrieval
+  tests/                 End-to-end test of the contractor flow
   knowledge/             Curated agriculture knowledge base
   scripts/               One-off ingestion utilities
 
 supabase/schema.sql      Tables, RLS policies, triggers, storage buckets
+supabase/migrations/     Incremental migrations for an existing project
 assets/model/            Source Keras model and exported TFLite
 ```
 
@@ -169,8 +191,11 @@ Supabase, Vercel and Google AI Studio.
 ### 1. Database
 
 Create a Supabase project, then run `supabase/schema.sql` in the SQL editor. This
-creates every table, RLS policy, trigger and the private `disease-images` bucket
+creates every table, RLS policy, trigger and the private `disease-images`, `avatars` and `work-proofs` buckets
 in one pass.
+
+On a project that already has the earlier schema, run the files in
+`supabase/migrations/` instead, in order. Each is written to be safe to re-run.
 
 Under **Authentication → Sign In / Providers**:
 
@@ -291,6 +316,26 @@ All endpoints except `/health` require `Authorization: Bearer <token>`.
 | `GET` | `/disease-images/signed-url` | Time-limited access URL |
 | `GET` | `/mandi/rates` | Market rates |
 | `POST` | `/chat` | Ask the advisory chatbot |
+| `POST` `GET` | `/profile/avatar` | Upload a profile photo, or get a signed URL |
+
+### Contractor verification — `/api`
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` `POST` | `/work/role` | Read or set landowner / contractor |
+| `POST` | `/contractors/invite` | Invite a contractor |
+| `POST` | `/contractors/{id}/accept` | Accept an invitation |
+| `GET` | `/contractors` | List linked parties |
+| `GET` `POST` | `/work-orders` | List jobs, or create one |
+| `GET` | `/work-orders/{id}` | Job with evidence, payments and balance |
+| `POST` | `/work-orders/{id}/accept` | Contractor accepts the rate |
+| `POST` | `/work-orders/{id}/decline` | Contractor declines |
+| `POST` | `/work-orders/{id}/proofs` | Upload a photo with GPS and time |
+| `POST` | `/work-orders/{id}/submit` | Send for review |
+| `POST` | `/work-orders/{id}/review` | Approve, part-approve or dispute |
+| `POST` | `/work-orders/{id}/payments` | Landowner records a payment |
+| `POST` | `/payments/{id}/confirm` | Payee confirms or rejects it |
+| `GET` `POST` | `/work-orders/{id}/messages` | Read or add to the thread |
 
 ---
 
@@ -307,14 +352,25 @@ All endpoints except `/health` require `Authorization: Bearer <token>`.
 | `chat_messages` | Conversation history |
 | `agriculture_documents` | Knowledge base for retrieval |
 | `mandi_rates` | Market prices |
+| `contractor_links` | Which contractors a landowner works with |
+| `work_orders` | The job, its agreed rate and its status |
+| `work_proofs` | Photo, GPS and both device and server timestamps |
+| `work_payments` | Payments, pending until the payee confirms |
+| `work_messages` | Per-job thread, including system entries |
+
+`work_orders.total_amount` is a generated column, so it cannot drift from
+`area_acres × rate_per_acre`. `work_order_balances` is a view computing what is
+owed from **verified** acres rather than the agreed area.
 
 Row-level security is enabled on every user-scoped table.
 
 ### Room
 
-Three entities — `user_profiles`, `khata_entries`, `disease_scans` — currently at
-schema version 6. Migrations are declared explicitly; add one for any schema change
-rather than relying on the destructive fallback.
+Four entities — `user_profiles`, `khata_entries`, `disease_scans` and
+`pending_proofs` — currently at schema version 8. `pending_proofs` queues work
+evidence captured without a signal, keeping the field's GPS fix and capture time
+until it can be uploaded. Migrations are declared explicitly; add one for any
+schema change rather than relying on the destructive fallback.
 
 ---
 
@@ -351,6 +407,17 @@ wrong diagnosis.
 
 `PlantDiseaseModelTest` covers classifier behaviour including the rejection paths.
 
+The contractor flow has its own end-to-end test, which runs the API against an
+in-memory stand-in for Supabase so no live project is needed:
+
+```bash
+cd backend && PYTHONPATH=. python3 tests/test_work_flow.py
+```
+
+Forty checks, covering the permission rules (a contractor cannot review, a payer
+cannot confirm their own payment, an outsider gets 404), the balance arithmetic,
+and the system entries written into each job's message thread.
+
 ---
 
 ## Known limitations
@@ -366,16 +433,14 @@ filtering by user ID on every query — which it does — with RLS as defence in
 depth. Switching user-scoped reads to the anon key with the caller's JWT would make
 the database itself enforce the boundary.
 
-**Profile photos are local only.** They are stored in app-private storage and lost
-on uninstall, unlike other data which restores from the cloud.
-
-**Dark mode is opt-in.** Screens paint hardcoded light surfaces, so following the
-system theme would leave text unreadable. A dark scheme is available as an explicit
-choice in settings; full support requires moving those surfaces onto the Material
-colour scheme.
+**Themes are an explicit choice, not the system setting.** Four themes are offered
+in settings - Light, Dark, Harvest and Midnight - each with its own surfaces and
+accents. The system dark-mode flag is deliberately ignored: a farmer who wants the
+light interface outdoors keeps it whatever the phone is set to.
 
 **Notification preferences are stored but not delivered.** No push infrastructure
-is wired up yet.
+is wired up yet, so alerts appear inside the app rather than reaching the device
+while it is closed.
 
 **Diagnoses are advisory.** The models are trained on a limited set of diseases for
 two crops. Serious or spreading damage needs a plant pathologist, and the app

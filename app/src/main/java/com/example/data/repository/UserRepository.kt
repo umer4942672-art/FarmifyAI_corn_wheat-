@@ -479,6 +479,10 @@ class UserRepository(
         _profile.update { it.copy(isAuthenticated = false) }
     }
 
+    private companion object {
+        const val TAG = "UserRepository"
+    }
+
     private fun UserEntity.toModel(isAuthenticated: Boolean = true): FarmerProfile {
         return FarmerProfile(
             fullName = this.fullName,
@@ -507,9 +511,5 @@ private fun normalizePhone(value: String): String {
         digits.startsWith("92") -> "+$digits"
         digits.startsWith("0") -> "+92${digits.drop(1)}"
         else -> "+92$digits"
-    }
-
-    private companion object {
-        const val TAG = "UserRepository"
     }
 }

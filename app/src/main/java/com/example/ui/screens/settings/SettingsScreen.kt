@@ -275,23 +275,32 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ThemeChoiceButton(
-                        label = if (langState.isUrdu) AppThemeMode.LIGHT.titleUr else AppThemeMode.LIGHT.titleEn,
-                        icon = Icons.Outlined.LightMode,
-                        selected = currentTheme == AppThemeMode.LIGHT,
-                        modifier = Modifier.weight(1f)
-                    ) { viewModel.setAppTheme(AppThemeMode.LIGHT) }
-
-                    ThemeChoiceButton(
-                        label = if (langState.isUrdu) AppThemeMode.DARK.titleUr else AppThemeMode.DARK.titleEn,
-                        icon = Icons.Outlined.DarkMode,
-                        selected = currentTheme == AppThemeMode.DARK,
-                        modifier = Modifier.weight(1f)
-                    ) { viewModel.setAppTheme(AppThemeMode.DARK) }
+                // Four themes, two to a row. Each carries its own surfaces and
+                // accents, so choosing one changes the whole app rather than
+                // just the background.
+                val themeIcons = mapOf(
+                    AppThemeMode.LIGHT to Icons.Outlined.LightMode,
+                    AppThemeMode.DARK to Icons.Outlined.DarkMode,
+                    AppThemeMode.HARVEST to Icons.Outlined.Agriculture,
+                    AppThemeMode.MIDNIGHT to Icons.Outlined.NightsStay
+                )
+                AppThemeMode.entries.chunked(2).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        row.forEach { mode ->
+                            ThemeChoiceButton(
+                                label = if (langState.isUrdu) mode.titleUr else mode.titleEn,
+                                icon = themeIcons[mode] ?: Icons.Outlined.Palette,
+                                selected = currentTheme == mode,
+                                modifier = Modifier.weight(1f)
+                            ) { viewModel.setAppTheme(mode) }
+                        }
+                        // Keeps the last row aligned if a theme is ever removed.
+                        if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))

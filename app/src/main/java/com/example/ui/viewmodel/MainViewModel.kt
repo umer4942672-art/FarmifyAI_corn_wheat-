@@ -62,12 +62,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentLanguage = MutableStateFlow(AppLanguage.ENGLISH)
     val currentLanguage: StateFlow<AppLanguage> = _currentLanguage.asStateFlow()
 
-    // App Theme State
-    private val _currentTheme = MutableStateFlow(AppThemeMode.LIGHT)
+    // App theme, remembered across launches.
+    //
+    // It used to live only in memory, so a farmer who chose a theme lost it the
+    // next time the app opened. With four themes rather than two that is more
+    // than a small annoyance.
+    private val appPrefs = application.getSharedPreferences("farmify_app", android.content.Context.MODE_PRIVATE)
+
+    private val _currentTheme = MutableStateFlow(loadSavedTheme())
     val currentTheme: StateFlow<AppThemeMode> = _currentTheme.asStateFlow()
+
+    private fun loadSavedTheme(): AppThemeMode {
+        val saved = appPrefs.getString(KEY_THEME, null) ?: return AppThemeMode.LIGHT
+        // A theme removed in a later version would otherwise crash on read.
+        return AppThemeMode.entries.firstOrNull { it.name == saved } ?: AppThemeMode.LIGHT
+    }
 
     fun setAppTheme(theme: AppThemeMode) {
         _currentTheme.value = theme
+        appPrefs.edit().putString(KEY_THEME, theme.name).apply()
     }
 
     // Voice & Chat Repositories
@@ -239,6 +252,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * Ledger rows that never reached the cloud.
+     *
+     * Derived from the entries flow rather than polled, so it settles on its own
+     * once a retry pass succeeds.
+     */
+    val unsyncedRecordCount: StateFlow<Int> = khataEntries
+        .map { entries -> entries.count { !it.isSynced } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     val khataSummary: StateFlow<KhataSummaryStats> = khataEntries.map { entries ->
         calculateKhataStats(entries)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), KhataSummaryStats())
@@ -313,6 +336,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Toast/Snackbar Message
     private val _userFeedback = MutableSharedFlow<String>()
     val userFeedback: SharedFlow<String> = _userFeedback.asSharedFlow()
+
+    init {
+        // Speech failures used to be silent. Surfacing them is the point of the
+        // rewrite: a farmer who taps the speaker and hears nothing needs to be
+        // told the voice is missing, not left guessing.
+        //
+        // Declared here rather than beside voiceHelper because initialisers run
+        // in source order, and _userFeedback is defined on the line above.
+        viewModelScope.launch {
+            voiceHelper.errors.collect { message -> _userFeedback.emit(message) }
+        }
+    }
 
     /** Surface a one-off message to the user, such as a voice input failure. */
     fun showMessage(message: String) {
@@ -862,5 +897,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             cropProfits = cropProfitMap,
             expenseCategories = expenseCategoryMap
         )
+    }
+
+    private companion object {
+        const val KEY_THEME = "app_theme"
     }
 }

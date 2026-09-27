@@ -1003,3 +1003,295 @@ away, which matters for a contractor who may not read back easily.
 
 Run `supabase/migrations/004_work_messages.sql` before deploying this.
 The backend suite covers it: 40 checks, all passing.
+
+---
+
+# Nineteenth pass — the weather card
+
+## 52. Four readings squeezed into one row
+
+The weather card put humidity, wind and rain in a single row of pills with 9sp
+labels and 11sp values. That is below what is comfortable to read outdoors, and
+in Urdu the labels ran into each other. The agri advisory sat beside the
+temperature in a narrow column, where the Urdu text wrapped badly.
+
+Rebuilt with the temperature leading, since that is what the app is opened to
+check, and the readings in a two-by-two grid instead of one cramped row:
+
+- temperature at 68sp, with the condition beneath it in the accent colour
+- four tiles, each with its icon in a tinted square, labels at 11sp and values
+  at 16sp
+- a fourth reading added: `feelsLikeC` was already in `CurrentWeather` and had
+  never been shown
+- the advisory now runs the full width, so Urdu has room
+- a drawn radial glow behind the temperature rather than a bundled image
+
+The dark green gradient and white text stay. A pale, low-contrast card in the
+style of the design this borrows from looks better on a desk and is unreadable
+in a field at midday, which is where this screen is actually used.
+
+---
+
+# Twentieth pass — themes that change the whole app
+
+## 53. Accents were hardcoded, so a theme could only change the background
+
+Surfaces already came from `LocalFarmifySurfaces`, which is what made dark mode
+work. The accents did not: `EmeraldGreen` and `ForestGreen` were plain
+top-level constants used directly in around two hundred places. A new theme
+could therefore repaint the background and nothing else.
+
+The same treatment the surfaces got has been applied to the accents. The raw
+constants keep their values under new names (`GreenEmerald`, `GreenForest`,
+`AccentGoldenYellow`), and the familiar names are now `@Composable
+@ReadOnlyComposable` getters reading the active palette. Every existing call
+site is untouched; which colour arrives depends on the chosen theme.
+
+`Theme.kt` was the one place these were read outside composition, in the
+Material colour schemes, and now uses the raw names. That is exactly the
+mistake made once before when the surfaces were converted, so it was checked
+across the whole source tree rather than assumed.
+
+Four themes, each with its own surfaces, accents and Material scheme:
+
+| Theme | Character |
+|---|---|
+| Light | the existing forest and emerald green |
+| Dark | green on near-black, accents lifted so they still read |
+| Harvest | wheat and clay, for farmers who find the green cool |
+| Midnight | deep blue-teal, a cooler dark |
+
+Harvest borrows from the warm agricultural designs that inspired it but keeps
+the green theme's text contrast. Those designs place pale cream on cream, which
+settles well indoors and disappears in a field at midday.
+
+The palette also carries `heroGradient`, so the weather card's gradient follows
+the theme instead of staying green whatever is chosen.
+
+## 54. The chosen theme was forgotten at every launch
+
+`_currentTheme` lived only in memory, so the selection reset to Light each time
+the app opened. Now written to preferences and read back on start, with an
+unknown stored value falling back to Light rather than crashing.
+
+## 55. Harvest given its own layout, not just its own colours
+
+Harvest now carries a distinct layout as well as a palette, so switching to it
+changes how the app is arranged rather than only what colour it is. Everything
+here is gated on the active theme, so Light, Dark and Midnight keep the
+existing arrangement untouched.
+
+**Floating navigation.** A rounded bar inset from the edges instead of the
+full-width bar flush against the bottom. Only the selected item shows its
+label: five labels in a pill this narrow would each be clipped, and a clipped
+Urdu label is worse than no label, so the selected item expands to show its own
+while the rest stay as icons large enough to hit.
+
+**Crop chips and a field card.** The designs this draws on get most of their
+warmth from stock photography. Photographs would add megabytes to the APK, need
+licensing, and be the same generic fields every other farming app uses, so the
+imagery is drawn with Canvas instead: six crop marks and a wheat field with sky,
+sun, hills and rows that shorten towards the horizon. It costs nothing to ship,
+recolours with the theme, and stays sharp at any density.
+
+There is a second reason for drawing the field rather than photographing one: a
+stock photograph of somebody else's farm sitting under the heading "My fields"
+misrepresents what the farmer is looking at.
+
+## 56. Palette colours read from places that are not composable
+
+Turning the accents into `@Composable` getters introduced a class of error the
+constants could never have: a palette colour read from a scope that is not
+composable. Two cases turned up on the first build.
+
+`LazyColumn`'s builder lambda is a `LazyListScope`, not a composable scope, so
+`LocalAppTheme.current` cannot be read there. The theme is now read once in the
+composable body and the lazy scope uses the resulting boolean.
+
+`Canvas`'s `onDraw` is a `DrawScope`, so a palette colour cannot be read inside
+it either. The weather card's glow colour is now resolved just outside the
+lambda and captured.
+
+The whole `ui` tree was then scanned by matching braces from each `Canvas`,
+`drawBehind` and `drawWithContent` opening and checking the body for palette
+names, rather than assuming those two were the only ones. No other site.
+
+---
+
+# Twenty-first pass — speech that says when it cannot speak
+
+## 57. Text-to-speech failed silently, and could stick
+
+Three faults, each hidden by a `catch` that did nothing.
+
+**Urdu fell through to an engine that cannot read it.** When Urdu was
+unavailable the helper tried Hindi, then English. Urdu is written in a
+Perso-Arabic script, so a Hindi or English voice produces nothing useful from
+it. The farmer heard silence or noise and was told nothing. Urdu now falls back
+only to another Urdu locale; if none exists the farmer is told to read the text
+or switch to English.
+
+**The button could stick.** `tts.speak()` returns `ERROR` when the engine
+refuses a request, and that result was ignored while `_isSpeaking` had already
+been set true. The flag then never cleared, so the next tap was read as "stop"
+and nothing played again until the app restarted. The result is now checked and
+the flag cleared on refusal.
+
+**`setLanguage()` was never checked.** Only `isLanguageAvailable()` was, and the
+two can disagree: a voice is listed but its data has not been downloaded. That
+case now reports `LANG_MISSING_DATA` and points at the phone's settings.
+
+Also fixed: the currency and bullet substitutions were applied to Urdu as well,
+inserting the English word "rupees" into Urdu sentences. They are now
+English-only. Initialisation retries are capped at three, since a failed engine
+keeps failing and the old code re-initialised on every tap.
+
+Failures now travel through an `errors` flow to the existing snackbar, in both
+languages.
+
+## 58. A collector placed above the property it read
+
+The first version of that wiring put the collector in an `init` block beside
+`voiceHelper`, near the top of `MainViewModel`, while `_userFeedback` is
+declared some two hundred lines below. Kotlin runs property initialisers and
+init blocks in source order, so this would have read an uninitialised property
+at construction and crashed the app on launch. The block now sits directly
+after the flow it uses.
+
+---
+
+# Twenty-second pass — a full inspection of v33
+
+Everything in the project was checked rather than only the recent work.
+
+## What passed
+
+- The backend compiles, loads all 36 endpoints, and its suite passes 40 of 40
+- All 64 Kotlin sources parse cleanly
+- No palette colour is read from a `Canvas`, `drawBehind` or `drawWithContent`
+  body, checked by matching braces from each opening rather than by eye
+- `PendingProofEntity` matches `MIGRATION_7_8` column for column, including
+  nullability, which is what Room verifies at open
+- Every endpoint the Android client calls exists on the backend
+- No key, keystore or `.env` is committed; `.gitignore` covers all three. The
+  two files that matched a key pattern were comments explaining Google's key
+  format change, not keys
+- No leftover TODO, patch script or dead function
+
+## 59. The README described a system two versions old
+
+The only real problem the inspection found, and it was in the documentation
+rather than the code.
+
+Two limitations listed there had already been fixed. Profile photos were still
+described as local-only and lost on uninstall, which stopped being true when
+they moved to Supabase Storage. Dark mode was still described as opt-in because
+screens paint hardcoded light surfaces, which stopped being true when the
+accents moved into the palette.
+
+Nothing added since the contractor work appeared at all: no work orders, no
+evidence, no payments, no messages, no voice input, no themes. A reader would
+have taken the README for the whole system and missed roughly a third of it.
+
+Now covering the contractor and messaging features, their fifteen endpoints,
+the five new tables, the generated `total_amount` column and the
+`work_order_balances` view, Room at schema version 8 with `pending_proofs`, the
+migrations directory, the three storage buckets, and how to run the backend
+test suite.
+
+---
+
+# Twenty-third pass — the dashboard, and two invisible-text bugs
+
+## 60. Section headings were close to invisible on the dark themes
+
+`SectionHeader` in `CommonComponents.kt` painted its title with a fixed slate,
+`Color(0xFF334155)`. That is dark-on-light by design, so on Dark and Midnight it
+sat almost on top of the background, and on Harvest it was the wrong tone
+entirely. It now uses `TextPrimary`, which follows the palette.
+
+This is the same class of bug as the original white-on-white problem: a colour
+chosen for one theme and then used everywhere.
+
+## 61. The season pill disappeared on Harvest
+
+The Rabi chip hardcoded a cream background with brown text. Against Harvest's
+cream surface it had almost no edge. Now tinted from the palette's gold, so it
+keeps its contrast whichever theme is on.
+
+## 62. The main features were three cards down the page
+
+Reaching the scanner or the ledger meant scrolling past the weather card, the
+financial snapshot and a disease banner. The four things the app exists to do
+now sit directly under the weather as a two-by-two grid: Smart Khata, Disease
+Detection, Contractor Work and the advisory.
+
+Each tile carries a 26dp icon in a 52dp block rather than the 20dp used
+elsewhere, because farmers who read slowly navigate by shape. On the pale
+themes a tile takes a wash of its own accent, which is what separates the four
+at a glance; on the dark themes a wash would muddy them, so the surface colour
+is used instead.
+
+The scanner tile breathes, scaling between 1.0 and 1.04 over 1.6 seconds.
+Anything faster is tiring on a screen checked many times a day.
+
+## 63. The weather card cost a scroll
+
+It had grown tall enough to push everything else below the fold: a 68sp
+temperature and four readings in a two-by-two grid. Now a 46sp temperature and
+three readings across one row, which roughly halves its height. The fourth
+reading, feels-like, was dropped rather than shrunk: humidity, wind and rain are
+what irrigation and spraying decisions turn on.
+
+## 64. The illustrated sections were Harvest-only
+
+The crop row and field card were written for Harvest and gated on it, so Meadow
+arrived with the palette and the feature grid but none of the illustration that
+made the reference design look the way it does.
+
+Both now appear on Harvest and Meadow, renamed to `IllustratedCropChips` and
+`IllustratedFieldCard` since they no longer belong to one theme, and moved above
+the financial snapshot rather than sitting at the foot of the page.
+
+The artwork adapts. Each crop carries two tints: Harvest keeps the clay browns,
+while Meadow takes fresher colours, because those browns look muddy on a
+near-white background. The field itself is ripened gold on Harvest and green on
+the cooler themes - a golden landscape on a pale green page reads as a mistake
+rather than a choice.
+
+The first version of that switch inferred the theme from a colour channel
+(`amberOrange.red > 0.7f`), which is both obscure and wrong, since both palettes
+have a high red component in that accent. It reads `LocalAppTheme` directly now.
+
+## 65. Meadow
+
+A fifth theme, near-white with saturated greens, in the style of the reference
+design. Its accents are deliberately strong: on a near-white background weak
+accents leave the feature tiles indistinguishable, which is how pale designs
+usually fail.
+
+## 66. A tasks section built from real state, not invented rows
+
+The reference design shows a "Today's Tasks" list. This app has no task
+feature, so building that literally would have meant printing plausible rows
+that correspond to nothing — "Field Inspection, 09:00 AM" against no stored
+task. In a project whose whole argument is that it refuses to guess, a
+decorative list of fake work would be the wrong thing to add.
+
+The section instead reports what is genuinely outstanding:
+
+- work waiting on this user's decision, which differs by role: a landowner
+  reviews submitted jobs, a contractor accepts new ones and resubmits disputed
+  ones
+- unread job messages, summed from the counts the backend already returns
+- ledger rows that never reached the cloud, derived from the entries flow so it
+  settles by itself once a retry succeeds
+- a spraying warning when rain is 50% or more likely, and an irrigation nudge
+  when it is 20% or less
+
+The rain rows are worth their own line rather than a note in the weather card:
+a spray washed off by rain costs both the chemical and the day.
+
+When nothing is outstanding the section is hidden rather than showing an empty
+state, so a farmer with nothing to do sees a shorter page instead of a box
+telling them so.

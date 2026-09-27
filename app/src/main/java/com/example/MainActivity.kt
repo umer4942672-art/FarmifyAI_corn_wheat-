@@ -36,6 +36,10 @@ import com.example.ui.screens.khata.SmartKhataScreen
 import com.example.ui.screens.mandi.MandiRatesScreen
 import com.example.ui.screens.settings.SettingsScreen
 import com.example.ui.screens.splash.SplashScreen
+import com.example.data.model.UserRole
+import com.example.ui.components.HarvestFloatingNav
+import com.example.ui.theme.AppThemeMode
+import com.example.ui.theme.LocalAppTheme
 import com.example.ui.screens.work.WorkHomeScreen
 import com.example.ui.screens.work.WorkOrderDetailScreen
 import com.example.ui.screens.weather.WeatherForecastScreen
@@ -107,6 +111,8 @@ fun FarmifyApp(
     // Contractor verification keeps its own view model; it shares only the
     // database and the backend client with the rest of the app.
     val workViewModel: WorkViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val workOrders by workViewModel.orders.collectAsStateWithLifecycle()
+    val workRole by workViewModel.role.collectAsStateWithLifecycle()
 
     var showAddIncomeDialog by remember { mutableStateOf(false) }
     var showAddExpenseDialog by remember { mutableStateOf(false) }
@@ -149,7 +155,16 @@ fun FarmifyApp(
             }
         },
         bottomBar = {
-            if (!isFullScreen) {
+            if (!isFullScreen && LocalAppTheme.current == AppThemeMode.HARVEST) {
+                // Harvest carries its own layout language, of which the floating
+                // bar is the most visible part.
+                HarvestFloatingNav(
+                    items = Screen.bottomNavItems,
+                    current = currentScreen,
+                    isUrdu = languageState.isUrdu,
+                    onSelect = { navigateTo(it) }
+                )
+            } else if (!isFullScreen) {
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 8.dp,
@@ -241,7 +256,17 @@ fun FarmifyApp(
                         onOpenAddIncome = { showAddIncomeDialog = true },
                         onOpenAddExpense = { showAddExpenseDialog = true },
                         onOpenAddFieldWork = { showAddFieldWorkDialog = true },
-                        onNavigateToWork = { navigateTo(Screen.Work) }
+                        onNavigateToWork = { navigateTo(Screen.Work) },
+                        // What counts as needing a decision depends on which side
+                        // the user is on: a landowner reviews submitted work, a
+                        // contractor accepts new jobs and resubmits disputed ones.
+                        workNeedingAction = workOrders.count { order ->
+                            when (workRole) {
+                                UserRole.LANDOWNER -> order.status == "submitted"
+                                UserRole.CONTRACTOR -> order.status in listOf("proposed", "disputed")
+                            }
+                        },
+                        unreadWorkMessages = workOrders.sumOf { it.unreadMessages }
                     )
                     Screen.CropsGuide -> CropsGuideScreen(
                         viewModel = viewModel,

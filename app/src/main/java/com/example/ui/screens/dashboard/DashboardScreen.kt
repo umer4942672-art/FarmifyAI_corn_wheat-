@@ -39,6 +39,11 @@ import com.example.data.model.MandiTrend
 import com.example.ui.components.CurrencyText
 import com.example.ui.components.FarmerAvatar
 import com.example.ui.components.SectionHeader
+import com.example.ui.components.AttentionSection
+import com.example.ui.components.DashboardFeature
+import com.example.ui.components.FeatureGrid
+import com.example.ui.components.IllustratedCropChips
+import com.example.ui.components.IllustratedFieldCard
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MainViewModel
 import com.example.util.LocalAppLanguage
@@ -56,14 +61,24 @@ fun DashboardScreen(
     onOpenAddExpense: () -> Unit,
     onOpenAddFieldWork: () -> Unit,
     onNavigateToWork: () -> Unit = {},
+    /** Jobs awaiting this user's decision, and unread job messages. */
+    workNeedingAction: Int = 0,
+    unreadWorkMessages: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val langState = LocalAppLanguage.current
     val context = LocalContext.current
+    // Captured here because the LazyColumn builder below is not a composable
+    // scope and cannot read a CompositionLocal.
+    // Harvest and Meadow both carry the illustrated layout: a crop row and a
+    // field card. Light, Dark and Midnight keep the plainer arrangement.
+    val showIllustratedSections = LocalAppTheme.current in
+        setOf(AppThemeMode.HARVEST, AppThemeMode.MEADOW)
     val userProfile by viewModel.userProfile.collectAsStateWithLifecycle()
     val weatherState by viewModel.weatherState.collectAsStateWithLifecycle()
     val khataStats by viewModel.khataSummary.collectAsStateWithLifecycle()
     val mandiRates by viewModel.filteredMandiRates.collectAsStateWithLifecycle()
+    val unsyncedRecords by viewModel.unsyncedRecordCount.collectAsStateWithLifecycle()
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -174,17 +189,24 @@ fun DashboardScreen(
 
                     // Compact season pill. The two-line card was too heavy for a
                     // header badge, so it is now a single chip.
+                    // Tinted from the palette rather than a fixed cream, which
+                    // was invisible against Harvest's cream background. The art
+                    // colour is resolved here because SeasonCropArt draws in a
+                    // Canvas, which is not a composable scope.
+                    val seasonAccent = GoldenYellow
                     Surface(
                         shape = RoundedCornerShape(20.dp),
-                        color = Color(0xFFFFF4D6),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEBCF8B))
+                        color = GoldenYellow.copy(alpha = 0.16f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp, GoldenYellow.copy(alpha = 0.4f)
+                        )
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                         ) {
                             SeasonCropArt(
-                                accent = Color(0xFFB07D18),
+                                accent = seasonAccent,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(5.dp))
@@ -192,7 +214,7 @@ fun DashboardScreen(
                                 text = if (langState.isUrdu) "ربیع" else "Rabi",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF7A5510),
+                                color = GoldenYellow,
                                 maxLines = 1
                             )
                         }
@@ -201,7 +223,13 @@ fun DashboardScreen(
             }
         }
 
-        // 2. High-Contrast Hero Weather Card with Emerald-to-Forest Gradient
+        // 2. Weather hero card.
+        //
+        // The temperature leads, because that is what a farmer opens the app to
+        // check, and the four readings sit under it in a grid rather than a
+        // cramped single row. Everything stays on the dark green gradient with
+        // white text: a pale card looks better on a desk and is unreadable in
+        // the field at midday.
         item {
             val currentW = weatherState.current
             Surface(
@@ -210,31 +238,48 @@ fun DashboardScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
                     .shadow(
-                        elevation = 10.dp,
-                        shape = RoundedCornerShape(26.dp),
+                        elevation = 12.dp,
+                        shape = RoundedCornerShape(28.dp),
                         spotColor = Color(0x4D0B5A6B),
                         ambientColor = Color(0x260B5A6B)
                     )
                     .testTag("dashboard_weather_hero_card"),
-                shape = RoundedCornerShape(26.dp),
+                shape = RoundedCornerShape(28.dp),
                 color = Color.Transparent
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    Color(0xFF1B5E20),
-                                    Color(0xFF2E7D32),
-                                    Color(0xFF144D18)
-                                )
+                        // Comes from the active theme, so the hero surface
+                        // changes with it instead of staying green.
+                        .background(Brush.linearGradient(HeroGradient))
+                ) {
+                    // A soft sun glow behind the temperature, drawn rather than
+                    // dropped in as an image so it costs nothing to ship.
+                    //
+                    // The colour is read here and not inside the draw lambda:
+                    // Canvas's onDraw is a DrawScope, not a composable scope, so
+                    // a palette-backed colour cannot be read from within it.
+                    val glowColor = GoldenYellow.copy(alpha = 0.22f)
+                    androidx.compose.foundation.Canvas(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(150.dp)
+                    ) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                listOf(glowColor, Color.Transparent)
+                            ),
+                            radius = size.minDimension * 0.55f,
+                            center = androidx.compose.ui.geometry.Offset(
+                                size.width * 0.72f,
+                                size.height * 0.28f
                             )
                         )
-                        .padding(20.dp)
-                ) {
-                    Column {
-                        // Location & Live Pulse Row
+                    }
+
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        // Location and live badge
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -245,36 +290,38 @@ fun DashboardScreen(
                                     imageVector = Icons.Filled.LocationOn,
                                     contentDescription = null,
                                     tint = GoldenYellow,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(17.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     text = "${weatherState.selectedDistrict.nameEn}, ${weatherState.selectedDistrict.province}",
                                     color = Color.White,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
                                 )
                             }
 
-                            // Weather Status Badge
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color.White.copy(alpha = 0.2f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                                color = Color.White.copy(alpha = 0.18f),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp, Color.White.copy(alpha = 0.3f)
+                                )
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.WbSunny,
-                                        contentDescription = null,
-                                        tint = GoldenYellow,
-                                        modifier = Modifier.size(14.dp)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(GoldenYellow)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        text = if (langState.isUrdu) "لائیو اپڈیٹ" else "LIVE",
+                                        text = if (langState.isUrdu) "لائیو" else "LIVE",
                                         color = Color.White,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
@@ -283,89 +330,209 @@ fun DashboardScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                        // Temperature & Condition
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column {
+                        // Temperature, still the largest thing on the card
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = "${currentW.temperatureC.toInt()}",
+                                color = Color.White,
+                                fontSize = 46.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = (-2).sp,
+                                lineHeight = 46.sp
+                            )
+                            Column(modifier = Modifier.padding(start = 6.dp, bottom = 12.dp)) {
                                 Text(
-                                    text = "${currentW.temperatureC.toInt()}°C",
-                                    color = Color.White,
-                                    fontSize = 46.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = (-1.5).sp
-                                )
-                                Text(
-                                    text = if (langState.isUrdu) currentW.conditionUr else currentW.conditionEn,
-                                    color = GoldenYellow,
-                                    fontSize = 18.sp,
+                                    text = "°C",
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontSize = 22.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                            Spacer(modifier = Modifier.weight(1f))
+                            Icon(
+                                imageVector = Icons.Filled.WbSunny,
+                                contentDescription = null,
+                                tint = GoldenYellow,
+                                modifier = Modifier
+                                    .padding(bottom = 10.dp)
+                                    .size(44.dp)
+                            )
+                        }
 
-                            // Forecast Advisory Micro Card
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color.Black.copy(alpha = 0.22f),
-                                modifier = Modifier.padding(start = 12.dp)
+                        Text(
+                            text = if (langState.isUrdu) currentW.conditionUr else currentW.conditionEn,
+                            color = GoldenYellow,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Three readings across one row. The two-by-two grid
+                        // made an accurate but tall card, and height here costs
+                        // the farmer a scroll before reaching anything usable.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            WeatherMetricTile(
+                                icon = Icons.Default.WaterDrop,
+                                label = if (langState.isUrdu) "نمی" else "Humidity",
+                                value = "${currentW.humidityPercent}%",
+                                modifier = Modifier.weight(1f)
+                            )
+                            WeatherMetricTile(
+                                icon = Icons.Default.Air,
+                                label = if (langState.isUrdu) "ہوا" else "Wind",
+                                value = "${currentW.windSpeedKmh.toInt()}",
+                                modifier = Modifier.weight(1f)
+                            )
+                            WeatherMetricTile(
+                                icon = Icons.Default.Umbrella,
+                                label = if (langState.isUrdu) "بارش" else "Rain",
+                                value = "${currentW.rainProbability}%",
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Advisory runs the full width instead of being squeezed
+                        // beside the temperature, where it used to wrap badly in Urdu.
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.Black.copy(alpha = 0.24f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Agriculture,
+                                    contentDescription = null,
+                                    tint = GoldenYellow,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
                                     Text(
-                                        text = if (langState.isUrdu) "زرعی مشورہ:" else "Agri Alert:",
+                                        text = if (langState.isUrdu) "زرعی مشورہ" else "Agri advice",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = GoldenYellow
                                     )
                                     Text(
-                                        text = if (langState.isUrdu) "فصلوں کو پانی لگانے کے لیے موزوں موسم" else "Ideal window for irrigation",
-                                        fontSize = 11.sp,
-                                        color = Color.White.copy(alpha = 0.95f)
+                                        text = if (langState.isUrdu)
+                                            "فصلوں کو پانی لگانے کے لیے موزوں موسم"
+                                        else
+                                            "Good conditions for irrigation today",
+                                        fontSize = 12.5.sp,
+                                        color = Color.White,
+                                        lineHeight = 17.sp
                                     )
                                 }
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(Color.White.copy(alpha = 0.2f))
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Clear high-contrast metrics row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            WeatherMetricPill(
-                                icon = Icons.Default.WaterDrop,
-                                label = if (langState.isUrdu) "نمی" else "Humidity",
-                                value = "${currentW.humidityPercent}%"
-                            )
-                            WeatherMetricPill(
-                                icon = Icons.Default.Air,
-                                label = if (langState.isUrdu) "ہوا" else "Wind",
-                                value = "${currentW.windSpeedKmh.toInt()} km/h"
-                            )
-                            WeatherMetricPill(
-                                icon = Icons.Default.Umbrella,
-                                label = if (langState.isUrdu) "بارش" else "Rain",
-                                value = "${currentW.rainProbability}%"
-                            )
                         }
                     }
                 }
             }
         }
 
-        // 3. Smart Farm Financial Snapshot (Net Profit, Total Income, Expense)
+        // 3. The four main features, directly under the weather.
+        //
+        // These used to sit below the financial snapshot, the disease banner and
+        // the quick actions, so the scanner and the ledger were three cards down
+        // the page. Putting them here is the single biggest change to how the
+        // dashboard is used.
+        item {
+            Spacer(modifier = Modifier.height(14.dp))
+            FeatureGrid(
+                isUrdu = langState.isUrdu,
+                features = listOf(
+                    DashboardFeature(
+                        titleEn = "Smart Khata",
+                        titleUr = "سمارٹ کھاتہ",
+                        subtitleEn = "Income and expenses",
+                        subtitleUr = "آمدن اور خرچہ",
+                        icon = Icons.Filled.AccountBalanceWallet,
+                        accent = EmeraldGreen,
+                        onClick = onNavigateToKhata
+                    ),
+                    DashboardFeature(
+                        titleEn = "Disease Detection",
+                        titleUr = "بیماری کی پہچان",
+                        subtitleEn = "Scan a leaf, works offline",
+                        subtitleUr = "پتہ اسکین کریں، آف لائن",
+                        icon = Icons.Filled.CameraAlt,
+                        accent = ErrorRed,
+                        onClick = onNavigateToScan,
+                        pulse = true
+                    ),
+                    DashboardFeature(
+                        titleEn = "Contractor Work",
+                        titleUr = "ٹھیکیدار کام",
+                        subtitleEn = "Proof of work and payments",
+                        subtitleUr = "کام کا ثبوت اور ادائیگی",
+                        icon = Icons.Filled.Handshake,
+                        accent = AmberOrange,
+                        onClick = onNavigateToWork
+                    ),
+                    DashboardFeature(
+                        titleEn = "Kisan Dost AI",
+                        titleUr = "کسان دوست AI",
+                        subtitleEn = "Ask in Urdu or English",
+                        subtitleUr = "اردو یا انگریزی میں پوچھیں",
+                        icon = Icons.Filled.Forum,
+                        accent = ForestGreen,
+                        onClick = onNavigateToKisanChat
+                    )
+                )
+            )
+        }
+
+        // Harvest-only sections. The theme carries its own layout language, so
+        // these appear with it and nowhere else rather than being bolted onto
+        // every theme.
+        // What is actually outstanding, straight under the four features.
+        // Hidden entirely when nothing is, rather than showing an empty box.
+        item {
+            Spacer(modifier = Modifier.height(14.dp))
+            AttentionSection(
+                isUrdu = langState.isUrdu,
+                workNeedingAction = workNeedingAction,
+                unreadMessages = unreadWorkMessages,
+                unsyncedRecords = unsyncedRecords,
+                rainProbability = weatherState.current.rainProbability,
+                onOpenWork = onNavigateToWork,
+                onOpenKhata = onNavigateToKhata
+            )
+        }
+
+        if (showIllustratedSections) {
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                IllustratedCropChips(
+                    isUrdu = langState.isUrdu,
+                    onCropClick = { onNavigateToCropsGuide() }
+                )
+            }
+            item {
+                Spacer(modifier = Modifier.height(12.dp))
+                IllustratedFieldCard(
+                    fieldName = userProfile.farmName.ifBlank {
+                        if (langState.isUrdu) "میرا کھیت" else "My farm"
+                    },
+                    areaLabel = "${userProfile.totalAcres} " + (if (langState.isUrdu) "ایکڑ" else "acres"),
+                    isUrdu = langState.isUrdu,
+                    onClick = onNavigateToKhata
+                )
+            }
+        }
+
+        // 4. Smart Farm Financial Snapshot (Net Profit, Total Income, Expense)
         item {
             Surface(
                 onClick = onNavigateToKhata,
@@ -549,7 +716,7 @@ fun DashboardScreen(
             }
         }
 
-        // 4. AI disease detection hero banner (offline, on-device TFLite).
+        // 5. AI disease detection hero banner (offline, on-device TFLite).
         //    Promoted above the quick actions: it is the app's own trained model
         //    and the main reason a farmer opens the app.
         item {
@@ -676,7 +843,7 @@ fun DashboardScreen(
             }
         }
 
-        // 5. Quick action grid
+        // 6. Quick action grid
         item {
             Column(
                 modifier = Modifier
@@ -797,7 +964,7 @@ fun DashboardScreen(
             }
         }
 
-        // 6. Crops & Diseases Encyclopedia Direct Card
+        // 7. Crops & Diseases Encyclopedia Direct Card
         item {
             Surface(
                 onClick = onNavigateToCropsGuide,
@@ -863,7 +1030,7 @@ fun DashboardScreen(
             }
         }
 
-        // 7. Live Mandi Rates Carousel (Visible & High Contrast)
+        // 8. Live Mandi Rates Carousel (Visible & High Contrast)
         item {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 Box(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -894,29 +1061,59 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun WeatherMetricPill(
+/**
+ * One weather reading, sized to be read at arm's length in daylight.
+ *
+ * The old pill put a 9sp label beside an 11sp value and fitted three across a
+ * row. These are wider, with the value at 16sp, which is the smallest that
+ * stays comfortable outdoors.
+ */
+
+private fun WeatherMetricTile(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    value: String
+    value: String,
+    modifier: Modifier = Modifier
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color.White.copy(alpha = 0.15f)
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+        modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = GoldenYellow,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(5.dp))
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(GoldenYellow.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = GoldenYellow,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(9.dp))
             Column {
-                Text(text = label, color = Color.White.copy(alpha = 0.8f), fontSize = 9.sp)
-                Text(text = value, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = label,
+                    color = Color.White.copy(alpha = 0.78f),
+                    fontSize = 11.sp,
+                    maxLines = 1
+                )
+                Text(
+                    text = value,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
             }
         }
     }

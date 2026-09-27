@@ -226,7 +226,9 @@ fun SectionHeader(
                     letterSpacing = 0.8.sp,
                     fontSize = 13.sp
                 ),
-                color = Color(0xFF334155)
+                // Was a fixed slate, which is close to invisible on the dark
+                // palettes and out of tone on Harvest.
+                color = TextPrimary
             )
         }
 
